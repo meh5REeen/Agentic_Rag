@@ -1,18 +1,29 @@
 import os
 from dotenv import load_dotenv
-from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
 
 load_dotenv()
 
-def load_vectorstore():
-    embedding_model = OpenAIEmbeddings(
-        model="text-embedding-ada-002",
-        openai_api_key=os.getenv("OPENAI_API_KEY")
+OLLAMA_EMBEDDING_API_BASE = os.getenv("OLLAMA_API_BASE", "http://127.0.0.1:11434")
+
+def get_embedding_model():
+    embeddings = HuggingFaceEmbeddings(
+    model_name="BAAI/bge-base-en-v1.5",
+    model_kwargs={
+        "device":"cpu"
+    },
+    encode_kwargs={
+        "normalize_embeddings":True,
+        "batch_size":64
+    }
     )
-    
+    return embeddings
+def load_vectorstore():
+    embedding_model = get_embedding_model()
+
     vectorstore = Chroma(
-        persist_directory="./chroma_db",      
+        persist_directory="./chroma_db",
         embedding_function=embedding_model
     )
     
@@ -25,8 +36,6 @@ def vector_search(vectorstore, query, top_k=10):
         k=top_k
     )
     
-    # results is a list of (Document, score) tuples
-    # lower score = more similar (it's a distance metric)
     
     print(f"\nVector search returned {len(results)} chunks")
     for i, (doc, score) in enumerate(results):
@@ -43,7 +52,6 @@ def reciprocal_rank_fusion(results_list, k=60):
     
     for results in results_list:
         for rank, (doc, _) in enumerate(results):
-            # use page content as the unique key
             doc_key = doc.page_content
             
             if doc_key not in scores:
@@ -52,28 +60,24 @@ def reciprocal_rank_fusion(results_list, k=60):
                     "score": 0
                 }
             
-            # RRF formula: 1 / (rank + k)
-            # rank 0 (best) gets highest score
-            scores[doc_key]["score"] += 1 / (rank + k)
+            
+            scores[doc_key]["score"] += 1 / ((rank+1) + k)
     
-    # sort by final RRF score, highest first
     reranked = sorted(scores.values(), key=lambda x: x["score"], reverse=True)
     
     return reranked
 
 
 def rerank_results(vectorstore, query, top_k=10, final_k=5):
-    # ── Search 1: semantic similarity search ──
     semantic_results = vectorstore.similarity_search_with_score(
         query=query,
         k=top_k
     )
     
-    # ── Search 2: keyword based search ──
-    # break query into keywords and search for exact matches
+    
     keywords = " ".join([
         word for word in query.split()
-        if len(word) > 3        # ignore short words like "the", "is", "of"
+        if len(word) > 3        
     ])
     
     keyword_results = vectorstore.similarity_search_with_score(
@@ -81,7 +85,6 @@ def rerank_results(vectorstore, query, top_k=10, final_k=5):
         k=top_k
     )
     
-    # ── Combine with RRF ──
     reranked = reciprocal_rank_fusion([semantic_results, keyword_results])
     
     # return only top final_k results
@@ -97,10 +100,8 @@ def rerank_results(vectorstore, query, top_k=10, final_k=5):
 
 
 def load_vectorstore():
-    embedding_model = OpenAIEmbeddings(
-        model="text-embedding-ada-002",
-        openai_api_key=os.getenv("OPENAI_API_KEY")
-    )
+    embedding_model = get_embedding_model()
+
     vectorstore = Chroma(
         persist_directory="./chroma_db",
         embedding_function=embedding_model
@@ -109,64 +110,51 @@ def load_vectorstore():
     return vectorstore
 
 
-def reciprocal_rank_fusion(results_list, k=60):
-    scores = {}
-    
-    for results in results_list:
-        for rank, (doc, _) in enumerate(results):
-            doc_key = doc.page_content
-            
-            if doc_key not in scores:
-                scores[doc_key] = {
-                    "doc": doc,
-                    "score": 0
-                }
-            
-            scores[doc_key]["score"] += 1 / (rank + k)
-    
-    reranked = sorted(scores.values(), key=lambda x: x["score"], reverse=True)
-    return reranked
-
-
-def retrieve(vectorstore, query, top_k=10, final_k=5):
+def _retrieve_ranked(vectorstore, query, top_k=10, final_k=5, project_id=None):
     print(f"\nRetrieving for query: '{query}'")
-    
-    # search 1: semantic
+    where_filter = {"project_id": project_id if project_id else "general"}
+
     semantic_results = vectorstore.similarity_search_with_score(
-        query=query,
-        k=top_k
+        query=query, k=top_k, filter=where_filter
     )
-    
-    # search 2: keyword
-    keywords = " ".join([
-        word for word in query.split()
-        if len(word) > 3
-    ])
+
+    keywords = " ".join([word for word in query.split() if len(word) > 3])
     keyword_results = vectorstore.similarity_search_with_score(
-        query=keywords,
-        k=top_k
+        query=keywords, k=top_k, filter=where_filter
     )
-    
-    # rerank
+
     reranked = reciprocal_rank_fusion([semantic_results, keyword_results])
     top_results = reranked[:final_k]
-    
+
     print(f"\nTop {len(top_results)} chunks after reranking:")
     for i, item in enumerate(top_results):
         doc = item["doc"]
         print(f"  {i+1}. source={doc.metadata.get('source')} | page={doc.metadata.get('page')} | score={item['score']:.4f}")
-    
-    # return just the Document objects for the rest of the pipeline
+
+    return top_results
+
+
+def retrieve(vectorstore, query, top_k=10, final_k=5, project_id=None):
+    top_results = _retrieve_ranked(vectorstore, query, top_k=top_k, final_k=final_k, project_id=project_id)
     return [item["doc"] for item in top_results]
+
+def retrieve_with_scores(vectorstore, query, top_k=10, final_k=5, project_id=None):
+    """
+    Same retrieval as `retrieve`, but also returns the RRF score for each
+    chunk so callers (e.g. the pipeline trace) can show why a chunk was picked.
+
+    Returns a list of {"doc": Document, "score": float}, ordered best-first.
+    """
+    return _retrieve_ranked(vectorstore, query, top_k=top_k, final_k=final_k, project_id=project_id)
 
 
 if __name__ == "__main__":
     vectorstore = load_vectorstore()
     
-    query = "How does the reranking work?"
+    query = "WHat is meant by Mobile Security?"
     results = retrieve(vectorstore, query)
     
-    print("\n── Retrieved Chunks ──")
+    print("\n   Retrieved Chunks    ")
     for i, doc in enumerate(results):
         print(f"\nChunk {i+1}:")
         print(f"Source: {doc.metadata.get('source')} | Page: {doc.metadata.get('page')}")

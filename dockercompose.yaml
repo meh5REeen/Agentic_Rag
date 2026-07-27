@@ -1,0 +1,81 @@
+services:
+  app:
+    build: .
+    container_name: agentic_rag
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    environment:
+      # These override anything conflicting in .env so the app always talks
+      # to the *service names* on the docker network, not localhost.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      NEO4J_HOST: neo4j
+      NEO4J_BOLT_PORT: 7687
+      NEO4J_URI: bolt://neo4j:7687
+      CHROMA_DB_PATH: /app/chroma_db
+    volumes:
+      - ./chroma_db:/app/chroma_db
+      - ./documents:/app/documents
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - rag_network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: rag_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agentic_rag}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-4679}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Auto-runs ONLY the first time the volume is empty (fresh init).
+      # If you edit migrations.sql later, `docker compose down -v` and
+      # re-up to re-apply, or run it manually against the running container.
+      - ./migrations.sql:/docker-entrypoint-initdb.d/01-migrations.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-raguser}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - rag_network
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: rag_neo4j
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-changeme_neo4j_pw}
+    ports:
+      - "7474:7474"   # browser UI: http://localhost:7474
+      - "7687:7687"   # bolt (what graph_store.py connects to)
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget -O /dev/null -q http://localhost:7474 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - rag_network
+
+volumes:
+  postgres_data:
+  neo4j_data:
+  neo4j_logs:
+
+networks:
+  rag_network:
+    driver: bridge

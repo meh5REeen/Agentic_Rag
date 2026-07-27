@@ -1,0 +1,17 @@
+.venv
+__pycache__
+*.pyc
+.git
+.gitignore
+.env
+.env.example
+chroma_db
+documents
+*.md
+.DS_Store
+test.py
+ 
+
+
+
+

@@ -49,22 +49,40 @@ def reciprocal_rank_fusion(results_list, k=60):
     k: constant that controls influence of lower-ranked results (default 60)
     """
     scores = {}
-    
+
+    def _doc_key(doc):
+        md = doc.metadata or {}
+        # Prefer stable source identity so identical text from different
+        # documents/pages/chunks is not conflated into one RRF entry.
+        document_id = md.get("document_id")
+        source = md.get("source")
+        page = md.get("page")
+        chunk_index = md.get("chunk_index")
+        file_path = md.get("file_path")
+        if any(v is not None for v in (document_id, source, page, chunk_index, file_path)):
+            return (
+                str(document_id),
+                str(source),
+                str(page),
+                str(chunk_index),
+                str(file_path),
+            )
+        return doc.page_content
+
     for results in results_list:
         for rank, (doc, _) in enumerate(results):
-            doc_key = doc.page_content
-            
+            doc_key = _doc_key(doc)
+
             if doc_key not in scores:
                 scores[doc_key] = {
                     "doc": doc,
                     "score": 0
                 }
-            
-            
+
             scores[doc_key]["score"] += 1 / ((rank+1) + k)
-    
+
     reranked = sorted(scores.values(), key=lambda x: x["score"], reverse=True)
-    
+
     return reranked
 
 

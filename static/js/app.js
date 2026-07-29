@@ -481,15 +481,19 @@
       const title = escapeHtml(doc.title || doc.source || "Unknown source");
       const page = doc.page !== undefined && doc.page !== null ? `Page ${escapeHtml(String(doc.page))}` : "";
       const preview = escapeHtml(doc.preview || doc.snippet || "");
-      const href = escapeHtml(doc.url || doc.source_url || "");
+      const docId = doc.document_id !== undefined && doc.document_id !== null ? String(doc.document_id) : "";
+      const hrefRaw = doc.url || doc.source_url || doc.viewer_url || (docId ? `/docs/${encodeURIComponent(docId)}` : "");
+      const href = escapeHtml(hrefRaw);
       const score = doc.score !== undefined ? String(doc.score.toFixed(4)) : "";
+      const titleHtml = href
+        ? `<a class="msg-doc-link" href="${href}" target="_blank" rel="noopener noreferrer">${title}${page ? ` · ${page}` : ""}</a>`
+        : `<span class="msg-doc-label disabled">${title}${page ? ` · ${page}` : ""}</span>`;
 
       return `<div class="msg-doc">
           <div class="msg-doc-head">
-            <span>${title}${page ? ` · ${page}` : ""}</span>
+            ${titleHtml}
             <span class="msg-doc-score">${score}</span>
           </div>
-          ${href ? `<a class="msg-doc-link" href="${href}" target="_blank" rel="noopener">Open source</a>` : ""}
           ${preview ? `<div class="msg-doc-preview">${preview}</div>` : ""}
         </div>`;
     }).join("");
@@ -536,8 +540,11 @@
     return { row, body, reasoningBody, docsBody };
   }
 
-  function finalizeAssistantMessageRow(row, body, trace, text, file) {
-    body.innerHTML = renderMessageHtml(text || "I was unable to generate a response. Please try again.");
+  function finalizeAssistantMessageRow(row, body, trace, text, file, citations) {
+    body.innerHTML = renderMessageHtml(
+      text || "I was unable to generate a response. Please try again.",
+      citations || []
+    );
     if (file) {
       const downloadWrapper = document.createElement("div");
       downloadWrapper.className = "msg-download";
@@ -576,12 +583,21 @@
   }
 
   // ── message rendering ─────────────────────────────────────────
-  function renderMessageHtml(text) {
+  function renderMessageHtml(text, citations) {
     let raw = typeof marked !== "undefined" && typeof marked.parse === "function"
       ? marked.parse(text)
       : escapeHtml(text).replace(/\n/g, "<br>");
 
-    raw = raw.replace(/\[(Document|Doc)\s+(\d+)\]/gi, '<a class="doc-ref" href="/docs/$2" target="_blank" rel="noopener">$&</a>');
+    raw = raw.replace(/\[(Document|Doc)\s+(\d+)\]/gi, (match, _label, numStr) => {
+      const n = Number(numStr);
+      const mapped = Array.isArray(citations)
+        ? citations.find(c => Number(c.index) === n)
+        : null;
+      const href = mapped?.url
+        || (mapped?.document_id ? `/docs/${encodeURIComponent(String(mapped.document_id))}` : "");
+      if (!href) return match; // graceful fallback if no resolvable URL
+      return `<a class="doc-ref" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${match}</a>`;
+    });
 
     if (typeof DOMPurify !== "undefined" && typeof DOMPurify.sanitize === "function") {
       return DOMPurify.sanitize(raw, { ADD_ATTR: ["target", "rel"] });
@@ -1241,7 +1257,14 @@ function syncWebSearchPlusBtn() {
               removeTyping();
               settled = true; 
               const finalTrace = { steps: liveTraceSteps, rag_used: !!evt.rag_used };
-                finalizeAssistantMessageRow(assistantRow.row, assistantRow.body, finalTrace, evt.response, evt.file);
+                finalizeAssistantMessageRow(
+                  assistantRow.row,
+                  assistantRow.body,
+                  finalTrace,
+                  evt.response,
+                  evt.file,
+                  evt.citations || []
+                );
               if (evt.title) {
                 headerTitle.textContent = evt.title;
                 await refreshConversations();

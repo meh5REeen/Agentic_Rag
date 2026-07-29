@@ -1,5 +1,6 @@
 import os
 import re
+import logging
 from dotenv import load_dotenv
 from db import load_conversation_history, add_new_message, create_conversation, get_or_create_user_id, get_conversation_project_id
 from query_rewriter import rewrite_query, rewrite_query_with_feedback
@@ -17,6 +18,7 @@ from tools.file_detector import detect_file_request
 
 load_dotenv()
 
+log = logging.getLogger(__name__)
 
 MAX_RETRIES = 3       
 
@@ -57,16 +59,53 @@ def _serialize_ranked_docs(ranked_docs):
     for item in ranked_docs:
         doc = item["doc"]
         content = doc.page_content or ""
+        document_id = doc.metadata.get("document_id")
         serialized.append({
+            "document_id": document_id,
             "source": doc.metadata.get("source"),
             "page": doc.metadata.get("page"),
             "file_path": doc.metadata.get("file_path"),
             "source_url": doc.metadata.get("source_url"),
+            "viewer_url": f"/docs/{document_id}" if document_id else None,
             "score": round(float(item["score"]), 4),
             "preview": content[:DOC_PREVIEW_CHARS],
             "truncated": len(content) > DOC_PREVIEW_CHARS,
         })
     return serialized
+
+
+def _build_citation_map(retrieved_docs):
+    """
+    Returns [{index, document_id, source, page, url}] where index aligns with
+    [Document N] used in the prompt / LLM output.
+    """
+    citations = []
+    for i, doc in enumerate(retrieved_docs, start=1):
+        md = doc.metadata or {}
+        document_id = md.get("document_id")
+        source_url = md.get("source_url")
+        fallback_url = f"/docs/{document_id}" if document_id else None
+        url = source_url or fallback_url
+        item = {
+            "index": i,
+            "document_id": document_id,
+            "source": md.get("source"),
+            "page": md.get("page"),
+            "url": url,
+        }
+        citations.append(item)
+
+        # Sanity check: citation index must map to a real source document.
+        if not item["source"]:
+            log.warning("Citation %s has missing source metadata: %s", i, md)
+        if not item["url"]:
+            log.warning("Citation %s has no resolvable URL: %s", i, md)
+        else:
+            log.info(
+                "Citation map: [Document %s] -> source=%s document_id=%s url=%s",
+                i, item["source"], document_id, url,
+            )
+    return citations
 
 
 def _generate_requested_file(user_query, file_request, response, trace):
@@ -92,7 +131,9 @@ def _generate_requested_file(user_query, file_request, response, trace):
         path=file_info["path"]
     )
     return file_info, step
-def _finish(user_query, file_request, response, trace, session_id):
+
+
+def _finish(user_query, file_request, response, trace, session_id, citations=None):
     """
     Single exit point for the pipeline, used by every branch (web search,
     direct answer, grounded answer, fallback/safe response — all of them).
@@ -124,6 +165,7 @@ def _finish(user_query, file_request, response, trace, session_id):
         "response": response,
         "file": file_info,
         "rag_used": trace.rag_used,
+        "citations": citations or [],
     })
     return events
 
@@ -291,7 +333,8 @@ def _run_pipeline_steps(user_query, session_id="default", use_web_search=False):
             step = trace.add("generate", "Generated grounded response", response_type="grounded", attempt=retry_count + 1)
             yield {"type": "step", "step": step}
 
-            for evt in _finish(user_query, file_request, response, trace, session_id):
+            citations = _build_citation_map(retrieved_docs)
+            for evt in _finish(user_query, file_request, response, trace, session_id, citations=citations):
                 yield evt
             return
 

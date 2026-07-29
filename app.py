@@ -294,6 +294,7 @@ def chat():
                         "response": event["response"],
                         "file": event.get("file"),
                         "rag_used": event["rag_used"],
+                        "citations": event.get("citations", []),
                         "title": title,
                     })
         except Exception as exc:

@@ -18,6 +18,7 @@ services:
     volumes:
       - ./chroma_db:/app/chroma_db
       - ./documents:/app/documents
+      - ./uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy

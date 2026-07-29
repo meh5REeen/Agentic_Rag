@@ -15,11 +15,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     poppler-utils \
+    ffmpeg \
+    libmagic1 \
     tesseract-ocr \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
+RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 # gunicorn is used to run the app in the container — add it to requirements.txt
 # if it's not already there, or uncomment the line below.

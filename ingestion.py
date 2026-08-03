@@ -379,9 +379,10 @@ def ingest_uploaded_file(file_path, filename, project_id=None, uploaded_by_user_
     )
 
     chunks = chunk_docs(loaded)
-    for chunk in chunks:
+    for idx, chunk in enumerate(chunks):
         chunk.metadata = dict(chunk.metadata or {})
         chunk.metadata["document_id"] = document_id   # so retrieved chunks trace back to this doc
+        chunk.metadata["chunk_index"] = idx
 
     if vectorstore is None:
         embedding_model = get_embedding_model()

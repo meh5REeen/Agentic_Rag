@@ -8,7 +8,7 @@ Validation for citation mismatch + clickable-source fixes.
 from langchain_core.documents import Document
 
 from retrieval import reciprocal_rank_fusion
-from pipeline import _build_citation_map, _serialize_ranked_docs
+from pipeline import _build_citation_map, _serialize_ranked_docs, _viewer_url
 
 
 SHARED_TEXT = (
@@ -60,12 +60,14 @@ def test_citation_map_index_matches_source():
     assert citations[0]["index"] == 1
     assert citations[0]["document_id"] == 101
     assert citations[0]["source"] == "aap_asd_report.pdf"
-    assert citations[0]["url"] == "/docs/101"
+    assert citations[0]["url"] == "/docs/101?page=3"
+    assert citations[0]["fileUrl"] == "/docs/101?page=3"
+    assert citations[0]["sourceFile"] == "aap_asd_report.pdf"
 
     assert citations[1]["index"] == 2
     assert citations[1]["document_id"] == 202
     assert citations[1]["source"] == "unrelated_guidelines.pdf"
-    assert citations[1]["url"] == "/docs/202"
+    assert citations[1]["url"] == "/docs/202?page=8"
 
     # Sanity: [Document N] must not resolve to the other file.
     by_index = {c["index"]: c for c in citations}
@@ -81,18 +83,19 @@ def test_serialize_exposes_viewer_url_for_clickable_sources():
     serialized = _serialize_ranked_docs(ranked)
 
     assert serialized[0]["document_id"] == 101
-    assert serialized[0]["viewer_url"] == "/docs/101"
+    assert serialized[0]["viewer_url"] == "/docs/101?page=3"
     assert serialized[0]["source_url"] is None
 
     assert serialized[1]["document_id"] == 202
-    assert serialized[1]["viewer_url"] == "/docs/202"
+    assert serialized[1]["viewer_url"] == "/docs/202?page=8"
 
     # Emulate frontend fallback used by appendStreamingReferencedDocs
     for doc in serialized:
-        href = doc.get("url") or doc.get("source_url") or doc.get("viewer_url") or (
+        href = doc.get("viewer_url") or doc.get("url") or doc.get("source_url") or (
             f"/docs/{doc['document_id']}" if doc.get("document_id") else ""
         )
-        assert href == f"/docs/{doc['document_id']}", f"Expected clickable href for {doc}"
+        assert "page=" in href, f"Expected page-aware href for {doc}"
+        assert href.startswith(f"/docs/{doc['document_id']}"), f"Expected clickable href for {doc}"
     print("PASS: Sources list can resolve clickable /docs/<document_id> links for local uploads")
 
 
@@ -106,16 +109,38 @@ def test_frontend_citation_link_resolution():
         mapped = next((c for c in citations if c["index"] == match_num), None)
         if not mapped:
             return None
-        return mapped.get("url") or (
+        return mapped.get("fileUrl") or mapped.get("url") or (
             f"/docs/{mapped['document_id']}" if mapped.get("document_id") else None
         )
 
     # Old bug: href="/docs/$2" would open DB id == citation index (wrong).
-    # New behavior: [Document 1] opens document_id 101, not /docs/1.
-    assert resolve(1) == "/docs/101"
-    assert resolve(2) == "/docs/202"
+    # New behavior: [Document 1] opens document_id 101 at page 3, not /docs/1.
+    assert resolve(1) == "/docs/101?page=3"
+    assert resolve(2) == "/docs/202?page=8"
     assert resolve(1) != "/docs/1"
     print("PASS: [Document N] links use citation map document_id, not positional DB id")
+
+
+def test_viewer_url_includes_chunk_when_present():
+    docs = [
+        make_doc("report.pdf", 101, 4, UNIQUE_A),
+    ]
+    docs[0].metadata["chunk_index"] = 2
+    citations = _build_citation_map(docs)
+    assert citations[0]["chunkId"] == 2
+    assert citations[0]["fileUrl"] == "/docs/101?page=4&chunk=2"
+    assert _viewer_url(101, 4, 2) == "/docs/101?page=4&chunk=2"
+    print("PASS: viewer URL includes page and chunk metadata")
+
+
+def test_citation_map_missing_metadata_keeps_index():
+    """Malformed/missing doc id should still emit citation row for frontend fallback."""
+    doc = Document(page_content="orphan chunk", metadata={"source": "lost.pdf", "page": 1})
+    citations = _build_citation_map([doc])
+    assert citations[0]["index"] == 1
+    assert citations[0]["url"] is None
+    assert citations[0]["fileUrl"] is None
+    print("PASS: citation rows without resolvable URL fall back to plain text on frontend")
 
 
 if __name__ == "__main__":
@@ -123,4 +148,8 @@ if __name__ == "__main__":
     test_citation_map_index_matches_source()
     test_serialize_exposes_viewer_url_for_clickable_sources()
     test_frontend_citation_link_resolution()
+    test_viewer_url_includes_chunk_when_present()
+    test_citation_regex_matches_full_and_short_format()
+    test_four_referenced_documents_all_clickable()
+    test_citation_map_missing_metadata_keeps_index()
     print("\nAll citation validation checks passed.")

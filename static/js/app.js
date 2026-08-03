@@ -475,15 +475,25 @@
     }
   }
 
+  function buildDocHref(doc) {
+    const docId = doc.document_id !== undefined && doc.document_id !== null ? String(doc.document_id) : "";
+    const base = doc.fileUrl || doc.viewer_url || doc.url || doc.source_url || (docId ? `/docs/${encodeURIComponent(docId)}` : "");
+    if (!base) return "";
+    const page = doc.page;
+    if (page !== undefined && page !== null && page !== "" && page !== "?" && !String(base).includes("page=")) {
+      const sep = String(base).includes("?") ? "&" : "?";
+      return `${base}${sep}page=${encodeURIComponent(String(page))}`;
+    }
+    return base;
+  }
+
   function appendStreamingReferencedDocs(docsBody, documents) {
     if (!documents || !documents.length) return;
     docsBody.innerHTML = documents.map(doc => {
       const title = escapeHtml(doc.title || doc.source || "Unknown source");
       const page = doc.page !== undefined && doc.page !== null ? `Page ${escapeHtml(String(doc.page))}` : "";
       const preview = escapeHtml(doc.preview || doc.snippet || "");
-      const docId = doc.document_id !== undefined && doc.document_id !== null ? String(doc.document_id) : "";
-      const hrefRaw = doc.url || doc.source_url || doc.viewer_url || (docId ? `/docs/${encodeURIComponent(docId)}` : "");
-      const href = escapeHtml(hrefRaw);
+      const href = escapeHtml(buildDocHref(doc));
       const score = doc.score !== undefined ? String(doc.score.toFixed(4)) : "";
       const titleHtml = href
         ? `<a class="msg-doc-link" href="${href}" target="_blank" rel="noopener noreferrer">${title}${page ? ` · ${page}` : ""}</a>`
@@ -583,24 +593,69 @@
   }
 
   // ── message rendering ─────────────────────────────────────────
+  const CITATION_FULL_RE = /\[(Document|Doc)\s+(\d+)\s*\|\s*Source:\s*([^|\]]+?)\s*\|\s*Page:\s*(\d+)\]/gi;
+  const CITATION_SHORT_RE = /\[(Document|Doc)\s+(\d+)\](?!\s*\|)/gi;
+
+  function lookupCitation(citations, index) {
+    if (!Array.isArray(citations)) return null;
+    return citations.find(c => Number(c.index) === index) || null;
+  }
+
+  function buildCitationHref(citation) {
+    if (!citation) return "";
+    if (citation.fileUrl) return citation.fileUrl;
+    if (citation.url) {
+      const page = citation.page;
+      if (page !== undefined && page !== null && page !== "" && page !== "?" && !String(citation.url).includes("page=")) {
+        const sep = String(citation.url).includes("?") ? "&" : "?";
+        return `${citation.url}${sep}page=${encodeURIComponent(String(page))}`;
+      }
+      return citation.url;
+    }
+    const docId = citation.document_id ?? citation.docId;
+    if (!docId) return "";
+    let href = `/docs/${encodeURIComponent(String(docId))}`;
+    const page = citation.page;
+    if (page !== undefined && page !== null && page !== "" && page !== "?") {
+      href += `?page=${encodeURIComponent(String(page))}`;
+    }
+    return href;
+  }
+
+  function formatCitationLabel(citation, index) {
+    const source = citation?.sourceFile || citation?.source;
+    const page = citation?.page;
+    if (source && page !== undefined && page !== null && page !== "" && page !== "?") {
+      const shortName = source.length > 24 ? `${source.slice(0, 21)}…` : source;
+      return `${shortName} · p.${page}`;
+    }
+    return `[${index}]`;
+  }
+
+  function renderCitationLink(index, citations, fallbackText) {
+    const mapped = lookupCitation(citations, index);
+    const href = buildCitationHref(mapped);
+    if (!href) return fallbackText;
+    const label = formatCitationLabel(mapped, index);
+    const title = mapped?.sourceFile || mapped?.source || `Document ${index}`;
+    return `<a class="citation-badge doc-ref" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(title)}">${escapeHtml(label)}</a>`;
+  }
+
   function renderMessageHtml(text, citations) {
     let raw = typeof marked !== "undefined" && typeof marked.parse === "function"
       ? marked.parse(text)
       : escapeHtml(text).replace(/\n/g, "<br>");
 
-    raw = raw.replace(/\[(Document|Doc)\s+(\d+)\]/gi, (match, _label, numStr) => {
-      const n = Number(numStr);
-      const mapped = Array.isArray(citations)
-        ? citations.find(c => Number(c.index) === n)
-        : null;
-      const href = mapped?.url
-        || (mapped?.document_id ? `/docs/${encodeURIComponent(String(mapped.document_id))}` : "");
-      if (!href) return match; // graceful fallback if no resolvable URL
-      return `<a class="doc-ref" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${match}</a>`;
-    });
+    raw = raw.replace(CITATION_FULL_RE, (match, _label, numStr) =>
+      renderCitationLink(Number(numStr), citations, match)
+    );
+
+    raw = raw.replace(CITATION_SHORT_RE, (match, _label, numStr) =>
+      renderCitationLink(Number(numStr), citations, match)
+    );
 
     if (typeof DOMPurify !== "undefined" && typeof DOMPurify.sanitize === "function") {
-      return DOMPurify.sanitize(raw, { ADD_ATTR: ["target", "rel"] });
+      return DOMPurify.sanitize(raw, { ADD_ATTR: ["target", "rel", "title"] });
     }
     return raw;
   }

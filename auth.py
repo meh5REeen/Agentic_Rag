@@ -52,7 +52,7 @@ def _issue_tokens(user_id):
     db.store_refresh_token(
         jti=decoded["jti"],
         user_id=user_id,
-        expires_at=expires_at,  # <-- pass datetime, not raw int
+        expires_at=expires_at,  
         user_agent=user_agent,
         ip_address=ip,
     )

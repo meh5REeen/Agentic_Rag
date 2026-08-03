@@ -4,7 +4,7 @@ import logging
 from datetime import timedelta
 
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, jsonify, Response, stream_with_context, send_file
+from flask import Flask, render_template, request, jsonify, Response, stream_with_context, send_file, url_for
 from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, get_jwt
 
 import db
@@ -27,7 +27,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "mehreen'skey")
 
 # --- JWT / cookie session configuration -------------------------------------
-app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "change-me-in-prod")
+app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "my-very-secret-key")
 app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes=30)
 app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=30)
@@ -55,7 +55,6 @@ app.register_blueprint(auth_bp, url_prefix="/api/auth")
 logging.basicConfig(level=logging.INFO)
 log = app.logger
 
-# Make sure auth tables exist on boot (idempotent).
 try:
     db.ensure_auth_tables()
     db.ensure_project_tables()
@@ -113,10 +112,10 @@ def add_headers(response):
     return response
 
 
-# NOTE: /api/login and /api/logout used to live here with no password check.
+
 # They've been replaced by the auth blueprint at:
 #   POST /api/auth/register  { username, password, email? }
-#   POST /api/auth/login     { username, password }
+#   POST /api/auth/login     { email, password }
 #   POST /api/auth/refresh
 #   POST /api/auth/logout
 #   POST /api/auth/logout-all
@@ -318,10 +317,27 @@ def doc_detail(doc_id):
         return render_template("doc.html", doc_id=doc_id, doc=None, error="Document not found."), 404
 
     file_path = doc.get("file_path")
-    if file_path and os.path.exists(file_path):
-        return send_file(file_path, as_attachment=False, download_name=doc.get("filename") or os.path.basename(file_path))
+    if not file_path or not os.path.exists(file_path):
+        return render_template("doc.html", doc_id=doc_id, doc=doc, error="This document is not available on the server.")
 
-    return render_template("doc.html", doc_id=doc_id, doc=doc, error="This document is not available on the server.")
+    filename = doc.get("filename") or os.path.basename(file_path)
+    raw = request.args.get("raw") == "1"
+    page = request.args.get("page", type=int)
+    chunk = request.args.get("chunk")
+    is_pdf = filename.lower().endswith(".pdf")
+
+    if not raw and page is not None and is_pdf:
+        return render_template(
+            "viewer.html",
+            doc=doc,
+            doc_id=doc_id,
+            page=page,
+            chunk=chunk,
+            filename=filename,
+            pdf_url=url_for("doc_detail", doc_id=doc_id, raw=1),
+        )
+
+    return send_file(file_path, as_attachment=False, download_name=filename)
 
 @app.route("/download/generated/<path:filename>")
 def download_generated_file(filename):

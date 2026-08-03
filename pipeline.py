@@ -54,19 +54,41 @@ class PipelineTrace:
         return {"steps": self.steps, "rag_used": self.rag_used}
 
 
+def _viewer_url(document_id, page=None, chunk_id=None):
+    """Build /docs/<id> URL with optional page (and chunk) query params."""
+    if not document_id:
+        return None
+    url = f"/docs/{document_id}"
+    params = []
+    if page is not None and page != "?":
+        try:
+            params.append(f"page={int(page)}")
+        except (TypeError, ValueError):
+            pass
+    if chunk_id is not None:
+        params.append(f"chunk={chunk_id}")
+    if params:
+        url += "?" + "&".join(params)
+    return url
+
+
 def _serialize_ranked_docs(ranked_docs):
     serialized = []
     for item in ranked_docs:
         doc = item["doc"]
         content = doc.page_content or ""
-        document_id = doc.metadata.get("document_id")
+        md = doc.metadata or {}
+        document_id = md.get("document_id")
+        page = md.get("page")
+        chunk_id = md.get("chunk_index") if md.get("chunk_index") is not None else md.get("chunk_id")
         serialized.append({
             "document_id": document_id,
-            "source": doc.metadata.get("source"),
-            "page": doc.metadata.get("page"),
-            "file_path": doc.metadata.get("file_path"),
-            "source_url": doc.metadata.get("source_url"),
-            "viewer_url": f"/docs/{document_id}" if document_id else None,
+            "source": md.get("source"),
+            "page": page,
+            "chunkId": chunk_id,
+            "file_path": md.get("file_path"),
+            "source_url": md.get("source_url"),
+            "viewer_url": _viewer_url(document_id, page, chunk_id),
             "score": round(float(item["score"]), 4),
             "preview": content[:DOC_PREVIEW_CHARS],
             "truncated": len(content) > DOC_PREVIEW_CHARS,
@@ -76,21 +98,29 @@ def _serialize_ranked_docs(ranked_docs):
 
 def _build_citation_map(retrieved_docs):
     """
-    Returns [{index, document_id, source, page, url}] where index aligns with
-    [Document N] used in the prompt / LLM output.
+    Returns structured citation metadata where index aligns with
+    [Document N] / [Document N | Source: ... | Page: ...] in LLM output.
     """
     citations = []
     for i, doc in enumerate(retrieved_docs, start=1):
         md = doc.metadata or {}
         document_id = md.get("document_id")
         source_url = md.get("source_url")
-        fallback_url = f"/docs/{document_id}" if document_id else None
-        url = source_url or fallback_url
+        page = md.get("page")
+        chunk_id = md.get("chunk_index") if md.get("chunk_index") is not None else md.get("chunk_id")
+        file_path = md.get("file_path")
+        viewer_url = _viewer_url(document_id, page, chunk_id)
+        url = source_url or viewer_url
         item = {
             "index": i,
+            "docId": document_id,
             "document_id": document_id,
+            "sourceFile": md.get("source"),
             "source": md.get("source"),
-            "page": md.get("page"),
+            "page": page,
+            "chunkId": chunk_id,
+            "file_path": file_path,
+            "fileUrl": viewer_url,
             "url": url,
         }
         citations.append(item)

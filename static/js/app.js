@@ -594,7 +594,9 @@
 
   // ── message rendering ─────────────────────────────────────────
   const CITATION_FULL_RE = /\[(Document|Doc)\s+(\d+)\s*\|\s*Source:\s*([^|\]]+?)\s*\|\s*Page:\s*(\d+)\]/gi;
+  const CITATION_GROUP_RE = /\[(?:(?:Document|Doc)\s+\d+(?:\s*,\s*)?)+\]/gi;
   const CITATION_SHORT_RE = /\[(Document|Doc)\s+(\d+)\](?!\s*\|)/gi;
+  const CITATION_INDEX_RE = /(?:Document|Doc)\s+(\d+)/gi;
 
   function lookupCitation(citations, index) {
     if (!Array.isArray(citations)) return null;
@@ -625,20 +627,39 @@
   function formatCitationLabel(citation, index) {
     const source = citation?.sourceFile || citation?.source;
     const page = citation?.page;
-    if (source && page !== undefined && page !== null && page !== "" && page !== "?") {
+    if (source) {
       const shortName = source.length > 24 ? `${source.slice(0, 21)}…` : source;
-      return `${shortName} · p.${page}`;
+      if (page !== undefined && page !== null && page !== "" && page !== "?") {
+        return `${shortName} · p.${page}`;
+      }
+      return shortName;
     }
     return `[${index}]`;
   }
 
   function renderCitationLink(index, citations, fallbackText) {
     const mapped = lookupCitation(citations, index);
+    if (!mapped) return fallbackText;
     const href = buildCitationHref(mapped);
-    if (!href) return fallbackText;
     const label = formatCitationLabel(mapped, index);
-    const title = mapped?.sourceFile || mapped?.source || `Document ${index}`;
+    const title = mapped.sourceFile || mapped.source || `Document ${index}`;
+    if (!href) {
+      return `<span class="citation-badge" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`;
+    }
     return `<a class="citation-badge doc-ref" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(title)}">${escapeHtml(label)}</a>`;
+  }
+
+  function renderCitationGroup(match, citations) {
+    const indexes = [];
+    CITATION_INDEX_RE.lastIndex = 0;
+    let part;
+    while ((part = CITATION_INDEX_RE.exec(match)) !== null) {
+      indexes.push(Number(part[1]));
+    }
+    if (!indexes.length) return match;
+    return indexes
+      .map(index => renderCitationLink(index, citations, `[Document ${index}]`))
+      .join(", ");
   }
 
   function renderMessageHtml(text, citations) {
@@ -649,6 +670,12 @@
     raw = raw.replace(CITATION_FULL_RE, (match, _label, numStr) =>
       renderCitationLink(Number(numStr), citations, match)
     );
+
+    // Grouped citations like [Document 1, Document 2, Document 3] before singles.
+    raw = raw.replace(CITATION_GROUP_RE, match => {
+      if (!/,/.test(match)) return match; // leave true singles for CITATION_SHORT_RE
+      return renderCitationGroup(match, citations);
+    });
 
     raw = raw.replace(CITATION_SHORT_RE, (match, _label, numStr) =>
       renderCitationLink(Number(numStr), citations, match)

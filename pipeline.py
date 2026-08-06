@@ -2,7 +2,14 @@ import os
 import re
 import logging
 from dotenv import load_dotenv
-from db import load_conversation_history, add_new_message, create_conversation, get_or_create_user_id, get_conversation_project_id
+from db import (
+    load_conversation_history,
+    add_new_message,
+    create_conversation,
+    get_or_create_user_id,
+    get_conversation_project_id,
+    get_document_id_by_filename,
+)
 from query_rewriter import rewrite_query, rewrite_query_with_feedback
 from orchestrator import needs_rag
 from retrieval import load_vectorstore, retrieve, retrieve_with_scores
@@ -72,13 +79,36 @@ def _viewer_url(document_id, page=None, chunk_id=None):
     return url
 
 
+def _resolve_document_id(md):
+    """
+    Prefer metadata document_id; for batch-ingested chunks that lack it,
+    look up the documents row by source filename (display/linking only).
+    """
+    document_id = md.get("document_id")
+    if document_id is not None and document_id != "":
+        return document_id
+
+    source = md.get("source") or ""
+    filename = os.path.basename(source) if source else ""
+    if not filename and md.get("file_path"):
+        filename = os.path.basename(md.get("file_path"))
+    if not filename:
+        return None
+
+    try:
+        return get_document_id_by_filename(filename)
+    except Exception as exc:
+        log.warning("Could not resolve document_id for %s: %s", filename, exc)
+        return None
+
+
 def _serialize_ranked_docs(ranked_docs):
     serialized = []
     for item in ranked_docs:
         doc = item["doc"]
         content = doc.page_content or ""
         md = doc.metadata or {}
-        document_id = md.get("document_id")
+        document_id = _resolve_document_id(md)
         page = md.get("page")
         chunk_id = md.get("chunk_index") if md.get("chunk_index") is not None else md.get("chunk_id")
         serialized.append({
@@ -104,7 +134,7 @@ def _build_citation_map(retrieved_docs):
     citations = []
     for i, doc in enumerate(retrieved_docs, start=1):
         md = doc.metadata or {}
-        document_id = md.get("document_id")
+        document_id = _resolve_document_id(md)
         source_url = md.get("source_url")
         page = md.get("page")
         chunk_id = md.get("chunk_index") if md.get("chunk_index") is not None else md.get("chunk_id")

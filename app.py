@@ -310,17 +310,54 @@ def chat():
     )
 
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _resolve_local_file_path(file_path, filename=None):
+    """
+    Resolve a documents.file_path that may be relative (documents\\foo.pdf)
+    or an absolute path from another checkout. Prefer an existing file under
+    this project's documents/ or uploads/ folders.
+    """
+    name = filename or (os.path.basename(file_path) if file_path else None)
+    candidates = []
+    if file_path:
+        candidates.append(file_path)
+        if not os.path.isabs(file_path):
+            candidates.append(os.path.join(BASE_DIR, file_path))
+    if name:
+        candidates.append(os.path.join(BASE_DIR, "documents", name))
+        candidates.append(os.path.join(BASE_DIR, "uploads", "general", name))
+    seen = set()
+    for candidate in candidates:
+        if not candidate:
+            continue
+        normalized = os.path.normpath(candidate)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        if os.path.exists(normalized):
+            return normalized
+    return None
+
+
 @app.route("/docs/<doc_id>")
 def doc_detail(doc_id):
     doc = db.get_document_by_id(int(doc_id)) if doc_id.isdigit() else None
     if not doc:
         return render_template("doc.html", doc_id=doc_id, doc=None, error="Document not found."), 404
 
-    file_path = doc.get("file_path")
-    if not file_path or not os.path.exists(file_path):
-        return render_template("doc.html", doc_id=doc_id, doc=doc, error="This document is not available on the server.")
+    filename = doc.get("filename") or (os.path.basename(doc.get("file_path") or "") if doc.get("file_path") else None)
+    file_path = _resolve_local_file_path(doc.get("file_path"), filename)
+    if not file_path:
+        return render_template(
+            "doc.html",
+            doc_id=doc_id,
+            doc=doc,
+            error="This document is not available on the server.",
+        )
 
-    filename = doc.get("filename") or os.path.basename(file_path)
+    filename = filename or os.path.basename(file_path)
     raw = request.args.get("raw") == "1"
     page = request.args.get("page", type=int)
     chunk = request.args.get("chunk")

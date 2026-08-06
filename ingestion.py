@@ -415,19 +415,22 @@ def load_docs(path='documents', project_id=None, uploaded_by_user_id=None):
             print(f"Skipping unsupported file: {filename}")
             continue
 
-        for doc in loaded:
-            doc.metadata = dict(doc.metadata or {})
-            doc.metadata.setdefault("file_path", file_path)
-            doc.metadata.update(scope_metadata(project_id))   # <-- never null now
-
         existing_doc_id = get_document_id_by_filename(filename)
         if existing_doc_id is None:
-            persist_document_to_db_and_graph(
+            existing_doc_id = persist_document_to_db_and_graph(
                 file_path, filename,
                 title=os.path.splitext(filename)[0],
                 uploaded_by_user_id=uploaded_by_user_id,
                 project_id=project_id,
             )
+
+        for doc in loaded:
+            doc.metadata = dict(doc.metadata or {})
+            doc.metadata.setdefault("file_path", file_path)
+            doc.metadata.update(scope_metadata(project_id))   # <-- never null now
+            if existing_doc_id is not None:
+                doc.metadata["document_id"] = existing_doc_id
+
         documents.extend(loaded)
         print(f"Loaded:{filename} ({len(loaded)} pages/sections)")
 

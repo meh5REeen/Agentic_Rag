@@ -19,25 +19,8 @@
     }
     .viewer-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .viewer-meta { color: #8a8785; flex-shrink: 0; }
-    .viewer-body { height: calc(100% - 44px); position: relative; }
-    #pdf-canvas-wrap {
-      overflow: auto;
-      height: 100%;
-      display: flex;
-      justify-content: center;
-      padding: 16px;
-    }
-    #pdf-canvas { box-shadow: 0 4px 24px rgba(0,0,0,0.45); max-width: 100%; }
-    .viewer-status {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #8a8785;
-      font-size: 14px;
-    }
-    .viewer-status.error { color: #e24b4a; }
+    .viewer-body { height: calc(100% - 44px); }
+    .viewer-frame { width: 100%; height: 100%; border: 0; background: #2a2a2a; }
   </style>
 </head>
 <body>
@@ -46,49 +29,12 @@
     <div class="viewer-meta">Page {{ page }}</div>
   </header>
   <div class="viewer-body">
-    <div id="viewer-status" class="viewer-status">Loading document…</div>
-    <div id="pdf-canvas-wrap" hidden>
-      <canvas id="pdf-canvas"></canvas>
-    </div>
+    {# Native browser PDF viewer: #page=N jumps to the cited page without CDN PDF.js. #}
+    <iframe
+      class="viewer-frame"
+      title="{{ filename }}"
+      src="{{ pdf_url }}#page={{ page }}"
+    ></iframe>
   </div>
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script>
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-
-    const PDF_URL = {{ pdf_url | tojson }};
-    const TARGET_PAGE = {{ page | tojson }};
-    const statusEl = document.getElementById("viewer-status");
-    const wrapEl = document.getElementById("pdf-canvas-wrap");
-    const canvas = document.getElementById("pdf-canvas");
-    const ctx = canvas.getContext("2d");
-
-    function showError(msg) {
-      statusEl.textContent = msg;
-      statusEl.classList.add("error");
-    }
-
-    async function renderPage(pdf, pageNum) {
-      const page = await pdf.getPage(pageNum);
-      const viewport = page.getViewport({ scale: 1.5 });
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
-      await page.render({ canvasContext: ctx, viewport }).promise;
-      wrapEl.hidden = false;
-      statusEl.hidden = true;
-    }
-
-    (async () => {
-      try {
-        const pdf = await pdfjsLib.getDocument(PDF_URL).promise;
-        const pageNum = Math.min(Math.max(1, TARGET_PAGE), pdf.numPages);
-        await renderPage(pdf, pageNum);
-      } catch (err) {
-        showError("Could not load PDF. Try opening the file directly.");
-        console.error(err);
-      }
-    })();
-  </script>
 </body>
 </html>

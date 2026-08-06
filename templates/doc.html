@@ -14,7 +14,14 @@
   <div class="card">
     <h2>Document reference</h2>
     <div class="meta">Reference ID: {{ doc_id }}</div>
-    <p>This is a placeholder document viewer. In the next step, this page can be wired to your uploaded PDFs and vector-store metadata so clicking a reference opens the exact source document.</p>
+    {% if error %}
+    <p>{{ error }}</p>
+    {% if doc and doc.filename %}
+    <p class="meta">Expected file: {{ doc.filename }}{% if doc.file_path %} ({{ doc.file_path }}){% endif %}</p>
+    {% endif %}
+    {% else %}
+    <p>Document metadata is available, but the file could not be opened.</p>
+    {% endif %}
   </div>
 </body>
 </html>

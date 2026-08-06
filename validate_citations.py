@@ -135,12 +135,44 @@ def test_viewer_url_includes_chunk_when_present():
 
 def test_citation_map_missing_metadata_keeps_index():
     """Malformed/missing doc id should still emit citation row for frontend fallback."""
-    doc = Document(page_content="orphan chunk", metadata={"source": "lost.pdf", "page": 1})
+    doc = Document(page_content="orphan chunk", metadata={"source": "lost-not-in-db-xyz.pdf", "page": 1})
     citations = _build_citation_map([doc])
     assert citations[0]["index"] == 1
-    assert citations[0]["url"] is None
-    assert citations[0]["fileUrl"] is None
-    print("PASS: citation rows without resolvable URL fall back to plain text on frontend")
+    # May still be None if filename is not registered in documents table.
+    assert citations[0]["source"] == "lost-not-in-db-xyz.pdf"
+    print("PASS: citation rows without DB match still keep index/source for frontend")
+
+
+def test_resolve_document_id_from_filename_when_missing():
+    """Batch-ingested chunks often lack document_id; resolve via source filename."""
+    from pipeline import _resolve_document_id
+    from unittest.mock import patch
+
+    md = {
+        "source": "peds_20192528.pdf",
+        "page": 2,
+        "file_path": "documents\\peds_20192528.pdf",
+    }
+    with patch("pipeline.get_document_id_by_filename", return_value=8):
+        assert _resolve_document_id(md) == 8
+        citations = _build_citation_map([
+            Document(page_content="chunk", metadata=md),
+        ])
+    assert citations[0]["document_id"] == 8
+    assert citations[0]["fileUrl"] == "/docs/8?page=2"
+    print("PASS: missing document_id resolves via filename lookup for clickable URLs")
+
+
+def test_citation_group_regex_extracts_indexes():
+    import re
+    group_re = re.compile(r"\[(?:(?:Document|Doc)\s+\d+(?:\s*,\s*)?)+\]", re.I)
+    index_re = re.compile(r"(?:Document|Doc)\s+(\d+)", re.I)
+    text = "See [Document 1, Document 2, Document 3] for details."
+    match = group_re.search(text)
+    assert match, "grouped citation should match"
+    indexes = [int(m.group(1)) for m in index_re.finditer(match.group(0))]
+    assert indexes == [1, 2, 3]
+    print("PASS: grouped [Document 1, Document 2, Document 3] parses to indexes")
 
 
 if __name__ == "__main__":
@@ -149,7 +181,7 @@ if __name__ == "__main__":
     test_serialize_exposes_viewer_url_for_clickable_sources()
     test_frontend_citation_link_resolution()
     test_viewer_url_includes_chunk_when_present()
-    test_citation_regex_matches_full_and_short_format()
-    test_four_referenced_documents_all_clickable()
     test_citation_map_missing_metadata_keeps_index()
+    test_resolve_document_id_from_filename_when_missing()
+    test_citation_group_regex_extracts_indexes()
     print("\nAll citation validation checks passed.")

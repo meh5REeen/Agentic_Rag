@@ -51,6 +51,10 @@
   const traceHeaderToggle = document.getElementById("trace-header-toggle");
 
   const plusBtn        = document.getElementById("plus-btn");
+  const plusWrap       = document.getElementById("plus-wrap") || (plusBtn && plusBtn.parentElement);
+  const plusProgressValue = plusWrap
+    ? plusWrap.querySelector(".plus-progress-value")
+    : null;
   const plusMenu        = document.getElementById("plus-menu");
   const menuUploadBtn   = document.getElementById("menu-upload-btn");
   const menuWebSearchBtn = document.getElementById("menu-websearch-btn");
@@ -1606,6 +1610,32 @@ function syncPlusBtn() {
   }
 
   // ── file upload ──────────────────────────────────────────────
+  let plusUploadResetTimer = null;
+
+  function setPlusUploadProgress(percent) {
+    if (!plusProgressValue) return;
+    const p = Math.max(0, Math.min(100, Number(percent) || 0));
+    // pathLength=100 → dashoffset 100 means empty, 0 means full
+    plusProgressValue.style.strokeDashoffset = String(100 - p);
+  }
+
+  function setPlusUploadState(state) {
+    if (!plusWrap) return;
+    plusWrap.classList.remove("is-uploading", "is-success", "is-error");
+    if (state === "uploading") plusWrap.classList.add("is-uploading");
+    else if (state === "success") plusWrap.classList.add("is-success");
+    else if (state === "error") plusWrap.classList.add("is-error");
+  }
+
+  function schedulePlusUploadIdle(delayMs) {
+    if (plusUploadResetTimer) clearTimeout(plusUploadResetTimer);
+    plusUploadResetTimer = setTimeout(() => {
+      setPlusUploadState("idle");
+      setPlusUploadProgress(0);
+      plusUploadResetTimer = null;
+    }, delayMs);
+  }
+
   function renderUploadProgress() {
     if (!uploadingFile) {
       uploadProgressEl.hidden = true;
@@ -1614,6 +1644,8 @@ function syncPlusBtn() {
     }
     uploadProgressEl.hidden = false;
     uploadProgressEl.textContent = `📎 ${uploadingFile.name} ${uploadingFile.percent}%`;
+    setPlusUploadState("uploading");
+    setPlusUploadProgress(uploadingFile.percent);
   }
 
   attachInput.addEventListener("change", async () => {
@@ -1625,17 +1657,33 @@ function syncPlusBtn() {
     if (!created) { attachInput.value = ""; return; }
   }
 
+  if (plusUploadResetTimer) {
+    clearTimeout(plusUploadResetTimer);
+    plusUploadResetTimer = null;
+  }
+
   uploadingFile = { name: file.name, percent: 0 };
+  setPlusUploadState("uploading");
+  setPlusUploadProgress(0);
   renderUploadProgress();
 
   try {
     await uploadFileWithProgress(file);
+    if (uploadingFile) uploadingFile.percent = 100;
+    renderUploadProgress();
+    setPlusUploadProgress(100);
+    setPlusUploadState("success");
     uploadingFile = null;
     renderUploadProgress();
+    schedulePlusUploadIdle(900);
     appendMsg("assistant", `📎 *${file.name}* was added to this conversation. You can ask me about it now.`);
   } catch (err) {
+    const failedAt = uploadingFile ? uploadingFile.percent : 100;
+    setPlusUploadProgress(Math.max(failedAt, 8));
+    setPlusUploadState("error");
     uploadingFile = null;
     renderUploadProgress();
+    schedulePlusUploadIdle(1200);
     addError(`Upload failed: ${err.message || "Upload failed"}`);
   } finally {
     attachInput.value = "";

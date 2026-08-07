@@ -55,6 +55,8 @@
   const menuUploadBtn   = document.getElementById("menu-upload-btn");
   const menuWebSearchBtn = document.getElementById("menu-websearch-btn");
   const webSearchCheck  = document.getElementById("websearch-check");
+  const menuAgentBtn    = document.getElementById("menu-agent-btn");
+  const agentCheck      = document.getElementById("agent-check");
   const attachInput    = document.getElementById("attach-input");
   const uploadProgressEl = document.getElementById("upload-progress");
   let activeSessionId  = null;
@@ -80,7 +82,12 @@
     web_search: "🌐",
     generate: "💬",
     refine: "🔁",
-    fallback: "⚠️"
+    fallback: "⚠️",
+    file: "📄",
+    agent_plan: "🤖",
+    subagent_start: "▶",
+    subagent_memory: "🧠",
+    agent_aggregate: "🧩"
   };
 
   let activeProjectId = null; // null = general chats, else the selected project's id
@@ -99,6 +106,11 @@
   function nodeClass(step) {
     if (step.type === "evaluation") return step.relevant ? "node-success" : "node-danger";
     if (step.type === "fallback") return "node-warning";
+    if (step.type === "subagent_memory") {
+      if (step.status === "ok") return "node-success";
+      if (step.status === "error" || step.status === "timeout") return "node-danger";
+      if (step.status === "empty") return "node-warning";
+    }
     return "node-accent";
   }
 
@@ -209,6 +221,55 @@
             ? `No relevant context found after ${step.retries_used ?? ""} retr${(step.retries_used ?? 0) === 1 ? "y" : "ies"} — returned a safe fallback response.`
             : "Returned a safe fallback response."
         }</div>`;
+        break;
+      }
+
+      case "agent_plan": {
+        const subs = (step.subtasks || []).map(s =>
+          `<div class="trace-doc"><div class="trace-doc-head"><span>${escapeHtml(s.id)} · ${escapeHtml(s.type)}</span></div>
+            <div class="trace-doc-preview">${escapeHtml(s.instruction || "")}</div></div>`
+        ).join("");
+        bodyHtml = `<div class="trace-step-body">${
+          step.subtasks
+            ? `Planned ${step.subtasks.length} sub-agent task${step.subtasks.length === 1 ? "" : "s"}.`
+            : "Parent is planning subtasks."
+        }</div>${subs ? `<div class="trace-docs">${subs}</div>` : ""}`;
+        break;
+      }
+
+      case "subagent_start": {
+        bodyHtml = `<div class="trace-step-body">${escapeHtml(step.instruction || "Running isolated subtask.")}
+          <div class="trace-doc-preview">Tools: ${escapeHtml((step.tools || []).join(", ") || "none")}</div>
+        </div>`;
+        break;
+      }
+
+      case "subagent_memory": {
+        const badge = `<span class="trace-badge ${step.status === "ok" ? "yes" : "no"}">${escapeHtml(step.status || "?")}</span>`;
+        labelHtml += " " + badge;
+        const sources = (step.sources_used || []).map(s => {
+          const bits = [];
+          if (s.source) bits.push(escapeHtml(s.source));
+          if (s.page !== null && s.page !== undefined && s.page !== "") bits.push("p. " + escapeHtml(String(s.page)));
+          return bits.join(" · ");
+        }).filter(Boolean);
+        bodyHtml = `<div class="trace-step-body">${escapeHtml(step.result_summary || "")}</div>
+          ${sources.length ? `<div class="trace-docs">${sources.map(s => `<div class="trace-doc"><div class="trace-doc-head"><span>${s}</span></div></div>`).join("")}</div>` : ""}
+          ${step.error ? `<div class="trace-feedback">${escapeHtml(step.error)}</div>` : ""}`;
+        break;
+      }
+
+      case "agent_aggregate": {
+        const statuses = step.statuses
+          ? Object.entries(step.statuses).map(([id, st]) => `${escapeHtml(id)}=${escapeHtml(String(st))}`).join(", ")
+          : "";
+        bodyHtml = `<div class="trace-step-body">${
+          step.memory_count !== undefined
+            ? `Combining ${escapeHtml(String(step.memory_count))} memory object${step.memory_count === 1 ? "" : "s"}.`
+            : (step.citation_count !== undefined
+              ? `Assembled final answer (${escapeHtml(String(step.citation_count))} citation${step.citation_count === 1 ? "" : "s"}).`
+              : "Aggregating sub-agent memories.")
+        }${statuses ? `<div class="trace-doc-preview">${statuses}</div>` : ""}</div>`;
         break;
       }
 
@@ -397,6 +458,18 @@
       detail = step.response_type === "grounded" ? "Generated a grounded response." : "Generated a direct response.";
     } else if (step.type === "fallback") {
       detail = "Used a safe fallback response.";
+    } else if (step.type === "agent_plan") {
+      detail = step.subtasks
+        ? `Planned ${step.subtasks.length} sub-agent task${step.subtasks.length === 1 ? "" : "s"}.`
+        : "Parent planning subtasks.";
+    } else if (step.type === "subagent_start") {
+      detail = `Started ${step.subtask_type || "sub-agent"} (${step.subtask_id || "?"}).`;
+    } else if (step.type === "subagent_memory") {
+      detail = step.result_summary
+        ? String(step.result_summary).slice(0, 160)
+        : `Sub-agent finished with status ${step.status || "unknown"}.`;
+    } else if (step.type === "agent_aggregate") {
+      detail = "Parent assembled the final answer from memories.";
     }
 
     return detail;
@@ -472,6 +545,17 @@
     }
     if (step.type === "retrieval" || step.type === "web_search") {
       appendStreamingReferencedDocs(docsBody, step.documents || step.results || []);
+    } else if (step.type === "subagent_memory" && Array.isArray(step.sources_used) && step.sources_used.length) {
+      appendStreamingReferencedDocs(docsBody, step.sources_used.map(s => ({
+        source: s.source,
+        page: s.page,
+        document_id: s.document_id,
+        viewer_url: s.document_id
+          ? `/docs/${encodeURIComponent(String(s.document_id))}${s.page != null && s.page !== "" ? `?page=${encodeURIComponent(String(s.page))}` : ""}`
+          : (s.url || ""),
+        score: undefined,
+        preview: "",
+      })));
     }
   }
 
@@ -717,9 +801,10 @@
     row.appendChild(head);
     row.appendChild(body);
 
-    if (role === "assistant" && trace) {
-      const { reasoningWrap, reasoningBody } = createReasoningPanel();
-      reasoningBody.innerHTML = buildReasoningSummary(trace);
+    if (role === "assistant" && trace && trace.steps && trace.steps.length) {
+      const { reasoningWrap, reasoningBody, docsBody } = createReasoningPanel();
+      // Replay every saved step so "Show thinking" + referenced docs match live.
+      trace.steps.forEach(step => appendStreamingReasoningStep(reasoningBody, docsBody, step));
       reasoningBody.hidden = true;
       reasoningBody.style.display = "none";
       reasoningWrap.querySelector(".msg-reasoning-toggle").textContent = "Show thinking";
@@ -772,7 +857,7 @@
     msgContainer.innerHTML = "";
     if (!messages || messages.length === 0) { showEmpty(); return; }
     showChat();
-    messages.forEach(m => appendMsg(m.role, m.content));
+    messages.forEach(m => appendMsg(m.role, m.content, m.trace || null));
   }
 
   // ── sidebar ───────────────────────────────────────────────────
@@ -893,8 +978,21 @@
       chevron.className = "project-chevron";
       chevron.textContent = isExpanded ? "▾" : "▸";
 
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "conv-del project-del";
+      del.textContent = "×";
+      del.title = "Delete project";
+      del.addEventListener("click", (e) => {
+        e.stopPropagation();
+        // Read id from the row dataset at click-time (avoids empty/stale closure values).
+        const pid = wrap.dataset.projectId;
+        deleteProject(pid, name);
+      });
+
       item.appendChild(icon);
       item.appendChild(label);
+      item.appendChild(del);
       item.appendChild(chevron);
       item.addEventListener("click", () => selectProject(id, name));
       wrap.appendChild(item);
@@ -1034,6 +1132,89 @@
       else renderGeneralConversations(data.conversations);
     } catch {
       addError("Could not delete conversation.");
+    }
+  }
+
+  async function deleteProject(projectId, projectName) {
+    const label = projectName || "this project";
+    const pid = projectId == null ? "" : String(projectId).trim();
+
+    // Empty id becomes DELETE /api/projects/ → Flask HTML 404 (route requires <project_id>).
+    if (!pid || pid === "undefined" || pid === "null") {
+      console.error("Delete project aborted: missing project id", { projectId, projectName });
+      addError("Could not delete project: missing project id in the UI.");
+      return;
+    }
+    if (!/^\d+$/.test(pid)) {
+      console.error("Delete project aborted: invalid project id", { projectId: pid });
+      addError(`Could not delete project: invalid project id "${pid}".`);
+      return;
+    }
+
+    const ok = window.confirm(
+      `Delete "${label}" and ALL of its chats, messages, traces, and uploaded documents? This cannot be undone.`
+    );
+    if (!ok) return;
+
+    // Exact URL the backend registers: DELETE /api/projects/<project_id>
+    const url = `/api/projects/${encodeURIComponent(pid)}`;
+
+    try {
+      const res = await authFetch(url, { method: "DELETE" });
+      let data = {};
+      let rawText = "";
+      try {
+        rawText = await res.text();
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch (parseErr) {
+        console.error("Delete project: non-JSON response", {
+          requestedUrl: url,
+          responseUrl: res.url,
+          status: res.status,
+          rawText,
+          parseErr,
+        });
+        data = {};
+      }
+
+      if (!res.ok) {
+        let detail =
+          data.error ||
+          data.msg ||
+          data.message ||
+          (rawText && rawText.slice(0, 200)) ||
+          `HTTP ${res.status}`;
+
+        // Werkzeug HTML 404 = no matching route (wrong URL or server not restarted).
+        if (res.status === 404 && /<!doctype html>/i.test(rawText || "")) {
+          detail =
+            `No DELETE route matched ${url}. Restart the Flask server so it loads the latest app.py, then try again.`;
+        }
+
+        console.error("Delete project failed", {
+          requestedUrl: url,
+          responseUrl: res.url,
+          status: res.status,
+          projectId: pid,
+          detail,
+          body: data,
+        });
+        addError(`Could not delete project: ${detail}`);
+        return;
+      }
+
+      // If we were viewing this project (or a chat inside it), clear the panel.
+      if (String(activeProjectId) === String(pid)) {
+        activeProjectId = null;
+        activeSessionId = null;
+        showEmpty();
+      }
+
+      await loadProjects();
+      await refreshConversations();
+    } catch (err) {
+      console.error("Delete project exception", { url, err });
+      addError(`Could not delete project: ${err && err.message ? err.message : String(err)}`);
     }
   }
 
@@ -1231,6 +1412,7 @@
   // });
   // ── plus menu: web search toggle + upload trigger ─────────────
 let webSearchEnabled = false;
+let agentModeEnabled = false;
 let uploadingFile     = null; // {name, percent} while an upload is in flight
 
 function closePlusMenu() { plusMenu.hidden = true; plusBtn.classList.remove("open"); }
@@ -1264,12 +1446,25 @@ menuUploadBtn.addEventListener("click", () => {
 menuWebSearchBtn.addEventListener("click", () => {
   webSearchEnabled = !webSearchEnabled;
   webSearchCheck.hidden = !webSearchEnabled;
-  syncWebSearchPlusBtn();
+  syncPlusBtn();
   closePlusMenu();
 });
 
-function syncWebSearchPlusBtn() {
-  if (webSearchEnabled) {
+if (menuAgentBtn && agentCheck) {
+  menuAgentBtn.addEventListener("click", () => {
+    agentModeEnabled = !agentModeEnabled;
+    agentCheck.hidden = !agentModeEnabled;
+    syncPlusBtn();
+    closePlusMenu();
+  });
+}
+
+function syncPlusBtn() {
+  if (agentModeEnabled) {
+    plusBtn.textContent = "🤖";
+    plusBtn.classList.add("websearch-active");
+    plusBtn.title = "Agent mode on";
+  } else if (webSearchEnabled) {
     plusBtn.textContent = "🌐";
     plusBtn.classList.add("websearch-active");
     plusBtn.title = "Web search on";
@@ -1308,7 +1503,12 @@ function syncWebSearchPlusBtn() {
   try {
     const res = await authFetch("/api/chat", {
       method: "POST",
-      body: JSON.stringify({ message: text, session_id: activeSessionId, web_search: webSearchEnabled })
+      body: JSON.stringify({
+        message: text,
+        session_id: activeSessionId,
+        web_search: webSearchEnabled,
+        agent_mode: agentModeEnabled
+      })
     });
 
       if (!res.ok || !res.body) {

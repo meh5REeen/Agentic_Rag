@@ -9,6 +9,7 @@ from db import (
     get_or_create_user_id,
     get_conversation_project_id,
     get_document_id_by_filename,
+    save_trace_steps,
 )
 from query_rewriter import rewrite_query, rewrite_query_with_feedback
 from orchestrator import needs_rag
@@ -218,7 +219,17 @@ def _finish(user_query, file_request, response, trace, session_id, citations=Non
         events.append({"type": "step", "step": file_step})
 
     add_new_message(session_id, "user", user_query)
-    add_new_message(session_id, "assistant", response)
+    assistant_message_id = add_new_message(session_id, "assistant", response)
+
+    # Persist the same step objects already streamed to the UI (buffered until
+    # the assistant message row exists for the FK).
+    try:
+        save_trace_steps(assistant_message_id, list(trace.steps))
+    except Exception:
+        log.exception(
+            "Failed to persist trace_steps for message_id=%s",
+            assistant_message_id,
+        )
 
     events.append({
         "type": "done",

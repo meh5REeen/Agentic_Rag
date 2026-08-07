@@ -64,6 +64,150 @@ def ensure_document_tables():
     finally:
         conn.close()
 
+
+def ensure_trace_steps_table():
+    """
+    Persist UI-visible thinking/trace steps keyed to an assistant message.
+    Same payload shape as SSE step objects — no sub-agent scratch/transcripts.
+    """
+    conn = get_connection()
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS trace_steps (
+                    id SERIAL PRIMARY KEY,
+                    message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+                    run_id TEXT,
+                    step_type TEXT,
+                    step_order INTEGER NOT NULL,
+                    payload JSONB NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_trace_steps_message_id
+                ON trace_steps (message_id)
+                """
+            )
+    finally:
+        conn.close()
+
+
+def save_trace_steps(message_id, steps, default_run_id=None):
+    """
+    Bulk-insert buffered SSE step dicts for one assistant message.
+    step_order starts at 0; payload is exactly the step object shown live.
+    """
+    if not message_id or not steps:
+        return
+    ensure_trace_steps_table()
+    conn = get_connection()
+    try:
+        with conn, conn.cursor() as cur:
+            for order, step in enumerate(steps):
+                if not isinstance(step, dict):
+                    continue
+                payload = step
+                step_type = step.get("type")
+                run_id = step.get("run_id")
+                if run_id is None:
+                    run_id = default_run_id
+                cur.execute(
+                    """
+                    INSERT INTO trace_steps
+                        (message_id, run_id, step_type, step_order, payload)
+                    VALUES (%s, %s, %s, %s, %s::jsonb)
+                    """,
+                    (
+                        message_id,
+                        str(run_id) if run_id is not None else None,
+                        step_type,
+                        order,
+                        json.dumps(payload, default=str),
+                    ),
+                )
+    finally:
+        conn.close()
+
+
+def get_trace_steps_for_message(message_id):
+    """Return step payloads ordered by step_order (frontend-ready)."""
+    if not message_id:
+        return []
+    ensure_trace_steps_table()
+    conn = get_connection()
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT payload
+                FROM trace_steps
+                WHERE message_id = %s
+                ORDER BY step_order ASC, id ASC
+                """,
+                (message_id,),
+            )
+            rows = cur.fetchall()
+            steps = []
+            for (payload,) in rows:
+                if isinstance(payload, str):
+                    try:
+                        payload = json.loads(payload)
+                    except json.JSONDecodeError:
+                        continue
+                if isinstance(payload, dict):
+                    steps.append(payload)
+            return steps
+    finally:
+        conn.close()
+
+
+def load_messages_with_traces(conversation_id):
+    """
+    API helper: messages with ids + attached trace for assistant rows.
+    Does not replace load_conversation_history (pipeline still uses role/content only).
+    """
+    ensure_trace_steps_table()
+    conn = get_connection()
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, role, content
+                FROM messages
+                WHERE conversation_id = %s
+                ORDER BY created_at ASC, id ASC
+                """,
+                (conversation_id,),
+            )
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    messages = []
+    for msg_id, role, content in rows:
+        if role not in ("user", "assistant") or not content or not str(content).strip():
+            continue
+        item = {
+            "id": msg_id,
+            "role": role,
+            "content": content,
+        }
+        if role == "assistant":
+            steps = get_trace_steps_for_message(msg_id)
+            if steps:
+                rag_used = any(
+                    s.get("type") in ("retrieval", "subagent_memory", "agent_plan")
+                    or s.get("response_type") == "grounded"
+                    for s in steps
+                )
+                item["trace"] = {"steps": steps, "rag_used": rag_used}
+        messages.append(item)
+    return messages
+
 def ensure_project_tables():
     conn = get_connection()
     try:
@@ -467,6 +611,77 @@ def load_projects(user_id):
                 }
                 for row in rows
             ]
+    finally:
+        conn.close()
+
+
+def delete_project(project_id, user_id):
+    """
+    Fully remove a project owned by user_id:
+      - all conversations in the project (messages + trace_steps cascade)
+      - all documents with this project_id (chunks cascade via documents FK)
+      - the project row itself
+
+    Returns None if not found / not owned, else a dict of cleanup hints:
+      { "file_paths": [...], "neo4j_ids": [...], "conversation_ids": [...] }
+    Caller is responsible for Chroma + on-disk upload cleanup.
+    """
+    ensure_project_tables()
+    ensure_document_tables()
+    project = get_project_by_id(project_id, user_id)
+    if not project:
+        return None
+
+    conn = get_connection()
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id FROM conversations
+                WHERE project_id = %s AND user_id = %s
+                """,
+                (project_id, user_id),
+            )
+            conversation_ids = [row[0] for row in cur.fetchall()]
+
+            cur.execute(
+                """
+                SELECT file_path, neo4j_id FROM documents
+                WHERE project_id = %s
+                """,
+                (project_id,),
+            )
+            doc_rows = cur.fetchall()
+            file_paths = [r[0] for r in doc_rows if r[0]]
+            neo4j_ids = [r[1] for r in doc_rows if r[1]]
+
+            # Must delete conversations explicitly: FK is ON DELETE SET NULL,
+            # which would otherwise orphan them into general chats.
+            cur.execute(
+                """
+                DELETE FROM conversations
+                WHERE project_id = %s AND user_id = %s
+                """,
+                (project_id, user_id),
+            )
+
+            # documents.project_id is ON DELETE CASCADE — deleting the project
+            # removes document rows (and chunks via document_chunks CASCADE).
+            cur.execute(
+                """
+                DELETE FROM projects
+                WHERE id = %s AND user_id = %s
+                """,
+                (project_id, user_id),
+            )
+            if cur.rowcount == 0:
+                return None
+
+        return {
+            "file_paths": file_paths,
+            "neo4j_ids": neo4j_ids,
+            "conversation_ids": conversation_ids,
+        }
     finally:
         conn.close()
 

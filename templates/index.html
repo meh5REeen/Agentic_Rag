@@ -466,6 +466,15 @@
       opacity: 1;
     }
 
+    .project-item .project-del {
+      opacity: 0;
+      margin-left: auto;
+    }
+
+    .project-item:hover .project-del {
+      opacity: 1;
+    }
+
     .conv-del:hover {
       color: var(--danger);
       background: rgba(226, 75, 74, 0.1);
@@ -1981,6 +1990,11 @@
         <span class="plus-menu-icon">🌐</span>
         <span class="plus-menu-label">Web search</span>
         <span class="plus-menu-check" id="websearch-check" hidden>✓</span>
+      </button>
+      <button type="button" class="plus-menu-item" id="menu-agent-btn">
+        <span class="plus-menu-icon">🤖</span>
+        <span class="plus-menu-label">Agent mode</span>
+        <span class="plus-menu-check" id="agent-check" hidden>✓</span>
       </button>
     </div>
 

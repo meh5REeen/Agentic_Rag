@@ -19,6 +19,7 @@ from db import (
 )
 from retrieval import load_vectorstore
 from pipeline import run_pipeline_stream
+from agent_harness import run_agent_harness_stream
 from auth import auth_bp, bcrypt
 
 load_dotenv()
@@ -58,8 +59,10 @@ log = app.logger
 try:
     db.ensure_auth_tables()
     db.ensure_project_tables()
+    db.ensure_trace_steps_table()
 except Exception:
     log.exception("Could not ensure auth tables — check DB connection/env vars.")
+
 
 vectorstore = None
 try:
@@ -76,11 +79,15 @@ def _make_title(text):
 
 
 def _serialize_history(history):
+    """Legacy shape used only if callers still pass (role, content) tuples."""
     messages = []
     if not history:
         return messages
     for item in history:
-        role, content = item
+        if len(item) >= 2:
+            role, content = item[0], item[1]
+        else:
+            continue
         if role in ("user", "assistant") and content and content.strip():
             messages.append({"role": role, "content": content})
     return messages
@@ -252,8 +259,8 @@ def conversation_messages(session_id):
     if not conversation_belongs_to_user(user_id, session_id):
         return jsonify({"error": "Conversation not found."}), 404
 
-    history = load_conversation_history(session_id)
-    return jsonify({"messages": _serialize_history(history)})
+    messages = db.load_messages_with_traces(session_id)
+    return jsonify({"messages": messages})
 
 
 
@@ -266,6 +273,7 @@ def chat():
     session_id = data.get("session_id")
     user_query = (data.get("message") or "").strip()
     use_web_search = bool(data.get("web_search"))
+    agent_mode = bool(data.get("agent_mode"))
 
     if not session_id or not conversation_belongs_to_user(user_id, session_id):
         return jsonify({"error": "Conversation not found."}), 404
@@ -279,7 +287,12 @@ def chat():
 
     def event_stream():
         try:
-            for event in run_pipeline_stream(user_query, session_id, use_web_search=use_web_search):
+            stream = (
+                run_agent_harness_stream(user_query, session_id, use_web_search=use_web_search)
+                if agent_mode
+                else run_pipeline_stream(user_query, session_id, use_web_search=use_web_search)
+            )
+            for event in stream:
                 if event["type"] == "step":
                     yield sse({"type": "step", "step": event["step"]})
 
@@ -294,8 +307,12 @@ def chat():
                         "file": event.get("file"),
                         "rag_used": event["rag_used"],
                         "citations": event.get("citations", []),
+                        "agent_mode": event.get("agent_mode", agent_mode),
                         "title": title,
                     })
+
+                elif event["type"] == "error":
+                    yield sse({"type": "error", "error": event.get("error") or "Unknown error."})
         except Exception as exc:
             log.exception("Pipeline error")
             yield sse({"type": "error", "error": f"Pipeline error: {exc}"})
@@ -402,6 +419,107 @@ def new_project():
 def list_projects():
     user_id = int(get_jwt_identity())
     return jsonify({"projects": db.load_projects(user_id)})
+
+
+def _purge_project_chroma(project_id):
+    """Remove vector chunks tagged with this project_id (int or str metadata)."""
+    if vectorstore is None:
+        return
+    collection = getattr(vectorstore, "_collection", None)
+    if collection is None:
+        return
+    candidates = [str(project_id)]
+    try:
+        candidates.append(int(project_id))
+    except (TypeError, ValueError):
+        pass
+    for pid in candidates:
+        try:
+            collection.delete(where={"project_id": pid})
+        except Exception:
+            log.exception("Chroma purge failed for project_id=%r", pid)
+
+
+def _purge_project_files(project_id, file_paths):
+    """Delete uploaded files listed in DB plus the uploads/<project_id> folder."""
+    import shutil
+
+    for path in file_paths or []:
+        try:
+            if path and os.path.isfile(path):
+                os.remove(path)
+        except OSError:
+            log.warning("Could not delete document file: %s", path)
+
+    project_upload_dir = os.path.join(UPLOAD_DIR, str(project_id))
+    if os.path.isdir(project_upload_dir):
+        try:
+            shutil.rmtree(project_upload_dir)
+        except OSError:
+            log.exception("Could not remove upload dir %s", project_upload_dir)
+
+
+@app.route("/api/projects/<project_id>", methods=["DELETE"])
+@jwt_required()
+def remove_project(project_id):
+    """
+    Delete project + its conversations/messages/traces + project documents,
+    then purge Chroma chunks and on-disk uploads for that project.
+    """
+    # Guard against junk path segments that would otherwise look like "not found".
+    if not str(project_id).isdigit():
+        return jsonify({
+            "error": f"Invalid project id '{project_id}'. Expected a numeric id.",
+        }), 400
+
+    user_id = int(get_jwt_identity())
+    try:
+        result = db.delete_project(int(project_id), user_id)
+        if result is None:
+            return jsonify({"error": "Project not found."}), 404
+
+        _purge_project_files(project_id, result.get("file_paths"))
+        _purge_project_chroma(project_id)
+        _purge_project_neo4j(result.get("neo4j_ids") or [])
+
+        return jsonify({
+            "ok": True,
+            "deleted_project_id": int(project_id),
+            "deleted_conversations": len(result.get("conversation_ids") or []),
+            "deleted_files": len(result.get("file_paths") or []),
+        })
+    except Exception as exc:
+        log.exception("Project delete failed for project_id=%s user_id=%s", project_id, user_id)
+        return jsonify({"error": f"Delete failed: {exc}"}), 500
+
+
+def _purge_project_neo4j(neo_ids):
+    """Best-effort graph cleanup; never block delete on Neo4j being down."""
+    neo_ids = [str(n) for n in (neo_ids or []) if n]
+    if not neo_ids:
+        return
+    try:
+        from graph_store import NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD, get_graph_store
+        if not (NEO4J_URI and NEO4J_USERNAME and NEO4J_PASSWORD):
+            return
+        store = get_graph_store()
+        try:
+            # Short timeout so a dead Neo4j cannot hang the HTTP request.
+            store.driver.verify_connectivity()
+            with store.driver.session() as session:
+                for neo_id in neo_ids:
+                    session.run(
+                        """
+                        MATCH (d:Document {id: $id})
+                        OPTIONAL MATCH (d)-[:HAS_CHUNK]->(c:Chunk)
+                        DETACH DELETE c, d
+                        """,
+                        id=neo_id,
+                    )
+        finally:
+            store.close()
+    except Exception:
+        log.exception("Neo4j cleanup skipped/failed for %s document(s)", len(neo_ids))
 
 
 @app.route("/api/health")

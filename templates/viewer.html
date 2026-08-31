@@ -3,38 +3,116 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ filename }} · Page {{ page }}</title>
+  <title>{{ filename }} · Page {{ page }} · Autia</title>
+  <script>
+    (function () {
+      var key = "autia-theme";
+      var stored = localStorage.getItem(key);
+      document.documentElement.setAttribute("data-theme", stored === "light" ? "light" : "dark");
+    })();
+  </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; background: #1a1a1a; color: #f0ede8; font-family: Inter, -apple-system, sans-serif; }
+
+    :root,
+    [data-theme="dark"] {
+      --bg: #1a1a1a;
+      --header-bg: #161616;
+      --frame-bg: #2a2a2a;
+      --text: #f0ede8;
+      --text-muted: #8a8785;
+      --border: rgba(255, 255, 255, 0.08);
+    }
+
+    [data-theme="light"] {
+      --bg: #f4f3f8;
+      --header-bg: #ffffff;
+      --frame-bg: #eceaf4;
+      --text: #1a1a1f;
+      --text-muted: #5c5a66;
+      --border: rgba(26, 26, 31, 0.1);
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, -apple-system, sans-serif;
+    }
+
     .viewer-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
       padding: 10px 16px;
-      background: #161616;
-      border-bottom: 1px solid rgba(255,255,255,0.08);
+      background: var(--header-bg);
+      border-bottom: 1px solid var(--border);
       font-size: 13px;
     }
+
     .viewer-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .viewer-meta { color: #8a8785; flex-shrink: 0; }
+    .viewer-meta { color: var(--text-muted); flex-shrink: 0; }
+
+    .theme-toggle {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+
+    .theme-toggle:hover { color: var(--text); }
+    .theme-toggle svg { width: 16px; height: 16px; stroke: currentColor; fill: none; }
+
     .viewer-body { height: calc(100% - 44px); }
-    .viewer-frame { width: 100%; height: 100%; border: 0; background: #2a2a2a; }
+    .viewer-frame { width: 100%; height: 100%; border: 0; background: var(--frame-bg); }
   </style>
 </head>
 <body>
   <header class="viewer-header">
     <div class="viewer-title" title="{{ filename }}">{{ filename }}</div>
-    <div class="viewer-meta">Page {{ page }}</div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <button type="button" class="theme-toggle" id="theme-toggle" title="Toggle theme" aria-label="Toggle light/dark theme"></button>
+      <div class="viewer-meta">Page {{ page }}</div>
+    </div>
   </header>
   <div class="viewer-body">
-    {# Native browser PDF viewer: #page=N jumps to the cited page without CDN PDF.js. #}
     <iframe
       class="viewer-frame"
       title="{{ filename }}"
       src="{{ pdf_url }}#page={{ page }}"
     ></iframe>
   </div>
+  <script src="/static/vendor/lucide.min.js"></script>
+  <script src="/static/js/icons.js"></script>
+  <script>
+    (function () {
+      var key = "autia-theme";
+      var btn = document.getElementById("theme-toggle");
+
+      function getTheme() {
+        return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+      }
+
+      function renderToggleIcon() {
+        AutiaIcons.mountIcon(btn, getTheme() === "dark" ? "Sun" : "Moon", { size: 16 });
+      }
+
+      renderToggleIcon();
+      btn.addEventListener("click", function () {
+        var next = getTheme() === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        localStorage.setItem(key, next);
+        renderToggleIcon();
+      });
+    })();
+  </script>
 </body>
 </html>

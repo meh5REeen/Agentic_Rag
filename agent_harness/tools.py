@@ -9,17 +9,14 @@ import logging
 from typing import Any, Callable
 
 from llm_client import call_gemini
+from text_utils import strip_thinking_tags
 from agent_harness.config import SUBAGENT_MODEL
 
 log = logging.getLogger(__name__)
 
 
 def _strip(text: str) -> str:
-    if not text:
-        return ""
-    if "</think>" in text:
-        text = text.split("</think>", 1)[-1]
-    return text.strip()
+    return strip_thinking_tags(text)
 
 
 def tool_retrieve(query: str, project_id=None, final_k: int = 5) -> dict[str, Any]:
@@ -101,6 +98,7 @@ def tool_answer(question: str, context: str) -> dict[str, Any]:
             messages=messages,
             temperature=0.3,
             max_tokens=500,
+            disable_reasoning=True,
         )
         text = _strip(raw)
         return {"ok": True, "answer": text or "No answer produced."}

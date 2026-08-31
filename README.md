@@ -1,4 +1,4 @@
-# Agentic RAG Chat
+# Autia
 
 A Flask-based **retrieval-augmented generation (RAG)** chat app with an optional **parent / sub-agent harness**, project-scoped document workspaces, clickable citations, live pipeline traces, and SSE streaming.
 
@@ -236,10 +236,13 @@ DB_PASSWORD=your_password
 # LLM (Groq)
 GROQ_API_KEY=...
 GROQ_BASE_URL=https://api.groq.com/openai/v1/chat/completions
-ORCHESTRATOR_MODEL=llama-3.1-8b-instant
-REWRITER_MODEL=llama-3.1-8b-instant
-EVALUATOR_MODEL=llama-3.1-8b-instant
-RESPONSE_MODEL=llama-3.3-70b-versatile
+ORCHESTRATOR_MODEL=qwen/qwen3.6-27b
+REWRITER_MODEL=qwen/qwen3.6-27b
+EVALUATOR_MODEL=qwen/qwen3.6-27b
+RESPONSE_MODEL=qwen/qwen3.6-27b
+
+# Groq model fallback (see config/models.py): qwen/qwen3.6-27b → openai/gpt-oss-120b → openai/gpt-oss-20b
+# Role env vars above set the preferred first model; llm_client.py retries the chain on 429/5xx/decommission.
 
 # Optional
 TAVILY_API_KEY=...
@@ -322,7 +325,7 @@ python validate_agent_harness.py  # Memory store, wipe, planner caps
 
 ## License / status
 
-Internal / coursework-style Agentic RAG demo. Extend at your own risk; Neo4j and Tavily are optional for core RAG chat.
+Internal / coursework-style Autia demo. Extend at your own risk; Neo4j and Tavily are optional for core RAG chat.
 
 ---
 

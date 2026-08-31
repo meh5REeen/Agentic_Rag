@@ -1,26 +1,25 @@
 import os
 import re
 from dotenv import load_dotenv
+from config.models import ENV_REWRITER_MODEL, get_role_preferred_model
 from llm_client import call_gemini
+from text_utils import strip_thinking_tags
 
 load_dotenv()
 
 REWRITER_MODEL = {
-    "name": os.getenv("REWRITER_MODEL", "llama-3.1-8b-instant")
+    "name": get_role_preferred_model(ENV_REWRITER_MODEL)
 }
-def strip_thinking(text: str) -> str:
-    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-    text = re.sub(r'Thinking Process:.*', '', text, flags=re.DOTALL)
-    
-    return text.strip()
+
 
 def call_llm(url, model_name, messages, temperature=0, max_tokens=200):
-    return strip_thinking(
+    return strip_thinking_tags(
         call_gemini(
             model_name=model_name,
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
+            disable_reasoning=True,
         )
     )
 
@@ -202,7 +201,7 @@ Output ONLY the new query string. No labels, no explanation."""
             temperature=0.7,
             max_tokens=80
         )
-        rewritten = strip_thinking(raw).strip()
+        rewritten = strip_thinking_tags(raw).strip()
     except Exception as e:
         print(f"Rewriter failed: {e}")
         rewritten = original_query

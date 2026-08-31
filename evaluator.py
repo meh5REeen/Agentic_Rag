@@ -1,22 +1,27 @@
 import os
 import json
 from dotenv import load_dotenv
+from config.models import ENV_EVALUATOR_MODEL, get_role_preferred_model
 from langchain_core.documents import Document
 from llm_client import call_gemini
+from text_utils import strip_thinking_tags
 
 load_dotenv()
 
 EVALUATOR_MODEL = {
-    "name": os.getenv("EVALUATOR_MODEL", "llama-3.1-8b-instant")
+    "name": get_role_preferred_model(ENV_EVALUATOR_MODEL)
 }
 
 
 def call_llm(url, model_name, messages, temperature=0, max_tokens=300):
-    return call_gemini(
-        model_name=model_name,
-        messages=messages,
-        temperature=temperature,
-        max_tokens=max_tokens,
+    return strip_thinking_tags(
+        call_gemini(
+            model_name=model_name,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            disable_reasoning=True,
+        )
     )
 
 

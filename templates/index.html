@@ -4,11 +4,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>RAG Chat</title>
+  <title>Autia</title>
   <link rel="icon" type="image/png" href="/static/images/icons8-favorite-48.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    (function () {
+      var key = "autia-theme";
+      var stored = localStorage.getItem(key);
+      document.documentElement.setAttribute("data-theme", stored === "light" ? "light" : "dark");
+    })();
+  </script>
   <style>
     *,
     *::before,
@@ -18,7 +25,8 @@
       padding: 0;
     }
 
-    :root {
+    :root,
+    [data-theme="dark"] {
       --bg: #0f0f0f;
       --sidebar-bg: #161616;
       --surface: #1e1e1e;
@@ -29,8 +37,14 @@
       --text-muted: #8a8785;
       --text-faint: #555250;
       --accent: #7c6af7;
+      --accent-hover: #9d91ff;
       --accent-light: rgba(124, 106, 247, 0.12);
       --accent-border: rgba(124, 106, 247, 0.28);
+      --accent-gradient-start: #7c6af7;
+      --accent-gradient-end: #5d7bef;
+      --accent-shadow: rgba(124, 106, 247, 0.22);
+      --accent-glow: rgba(124, 106, 247, 0.18);
+      --accent-ring: rgba(124, 106, 247, 0.32);
       --danger: #e24b4a;
       --success: #4cc97f;
       --success-light: rgba(76, 201, 127, 0.12);
@@ -40,8 +54,92 @@
       --warning: #e0a73a;
       --warning-light: rgba(224, 167, 58, 0.12);
       --warning-border: rgba(224, 167, 58, 0.3);
+      --overlay-subtle: rgba(255, 255, 255, 0.06);
+      --overlay-medium: rgba(255, 255, 255, 0.08);
+      --overlay-strong: rgba(255, 255, 255, 0.1);
+      --overlay-faint: rgba(255, 255, 255, 0.03);
+      --modal-overlay: rgba(0, 0, 0, 0.55);
+      --body-bg: radial-gradient(circle at 10% 10%, rgba(124, 106, 247, 0.18), transparent 18%),
+        radial-gradient(circle at 90% 20%, rgba(64, 180, 255, 0.12), transparent 16%),
+        linear-gradient(180deg, #09090b 0%, #0f0f0f 100%);
+      --composer-bg: rgba(28, 30, 49, 0.92);
+      --composer-border: rgba(88, 144, 255, 0.35);
+      --composer-border-focus: rgba(94, 159, 255, 0.85);
+      --composer-shadow: rgba(41, 77, 139, 0.18);
+      --composer-input-bg: rgba(255, 255, 255, 0.04);
+      --composer-input-border: rgba(255, 255, 255, 0.08);
+      --composer-input-focus-ring: rgba(94, 159, 255, 0.15);
+      --composer-input-focus-bg: rgba(255, 255, 255, 0.08);
+      --progress-track: rgba(255, 255, 255, 0.12);
+      --shadow-elevated: rgba(0, 0, 0, 0.35);
+      --divider-subtle: rgba(255, 255, 255, 0.05);
+      --user-msg-border: rgba(124, 106, 247, 0.2);
+      --docs-panel-bg: rgba(124, 106, 247, 0.06);
+      --docs-panel-border: rgba(124, 106, 247, 0.15);
+      --citation-hover-bg: rgba(124, 106, 247, 0.22);
+      --citation-hover-text: #b5abf9;
+      --assistant-bg: #26262b;
+      --assistant-border: rgba(255, 255, 255, 0.08);
+      --assistant-shadow: rgba(0, 0, 0, 0.18);
       --radius: 8px;
       --font: 'Inter', -apple-system, sans-serif;
+    }
+
+    [data-theme="light"] {
+      --bg: #f4f3f8;
+      --sidebar-bg: #ffffff;
+      --surface: #ffffff;
+      --surface-hover: #eceaf4;
+      --border: rgba(26, 26, 31, 0.08);
+      --border-strong: rgba(26, 26, 31, 0.14);
+      --text: #1a1a1f;
+      --text-muted: #5c5a66;
+      --text-faint: #9492a0;
+      --accent: #5b4cdb;
+      --accent-hover: #4a3bc7;
+      --accent-light: rgba(91, 76, 219, 0.1);
+      --accent-border: rgba(91, 76, 219, 0.28);
+      --accent-gradient-start: #6b5ce7;
+      --accent-gradient-end: #4f6fe8;
+      --accent-shadow: rgba(91, 76, 219, 0.2);
+      --accent-glow: rgba(91, 76, 219, 0.12);
+      --accent-ring: rgba(91, 76, 219, 0.28);
+      --danger: #d63b3a;
+      --success: #2a9d5c;
+      --success-light: rgba(42, 157, 92, 0.1);
+      --success-border: rgba(42, 157, 92, 0.28);
+      --danger-light: rgba(214, 59, 58, 0.1);
+      --danger-border: rgba(214, 59, 58, 0.28);
+      --warning: #c4861a;
+      --warning-light: rgba(196, 134, 26, 0.1);
+      --warning-border: rgba(196, 134, 26, 0.28);
+      --overlay-subtle: rgba(26, 26, 31, 0.04);
+      --overlay-medium: rgba(26, 26, 31, 0.06);
+      --overlay-strong: rgba(26, 26, 31, 0.08);
+      --overlay-faint: rgba(26, 26, 31, 0.03);
+      --modal-overlay: rgba(26, 26, 31, 0.4);
+      --body-bg: radial-gradient(circle at 10% 10%, rgba(91, 76, 219, 0.08), transparent 22%),
+        radial-gradient(circle at 90% 20%, rgba(64, 140, 220, 0.06), transparent 20%),
+        linear-gradient(180deg, #faf9fc 0%, #f4f3f8 100%);
+      --composer-bg: #ffffff;
+      --composer-border: rgba(91, 76, 219, 0.22);
+      --composer-border-focus: rgba(91, 76, 219, 0.55);
+      --composer-shadow: rgba(91, 76, 219, 0.1);
+      --composer-input-bg: #f8f7fc;
+      --composer-input-border: rgba(26, 26, 31, 0.1);
+      --composer-input-focus-ring: rgba(91, 76, 219, 0.12);
+      --composer-input-focus-bg: #ffffff;
+      --progress-track: rgba(26, 26, 31, 0.1);
+      --shadow-elevated: rgba(26, 26, 31, 0.12);
+      --divider-subtle: rgba(26, 26, 31, 0.06);
+      --user-msg-border: rgba(91, 76, 219, 0.22);
+      --docs-panel-bg: rgba(91, 76, 219, 0.05);
+      --docs-panel-border: rgba(91, 76, 219, 0.14);
+      --citation-hover-bg: rgba(91, 76, 219, 0.16);
+      --citation-hover-text: #4a3bc7;
+      --assistant-bg: #ffffff;
+      --assistant-border: rgba(26, 26, 31, 0.1);
+      --assistant-shadow: rgba(26, 26, 31, 0.06);
     }
 
     html,
@@ -51,9 +149,7 @@
 
     body {
       font-family: var(--font);
-      background: radial-gradient(circle at 10% 10%, rgba(124, 106, 247, 0.18), transparent 18%),
-        radial-gradient(circle at 90% 20%, rgba(64, 180, 255, 0.12), transparent 16%),
-        linear-gradient(180deg, #09090b 0%, #0f0f0f 100%);
+      background: var(--body-bg);
       color: var(--text);
       font-size: 14px;
       line-height: 1.6;
@@ -117,6 +213,55 @@
       justify-content: center;
       height: 100vh;
       padding: 24px;
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    [data-theme="light"] #login-screen::before,
+    [data-theme="light"] #login-screen::after {
+      content: "";
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(60px);
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.55;
+    }
+
+    [data-theme="light"] #login-screen::before {
+      width: min(55vw, 420px);
+      height: min(55vw, 420px);
+      top: -12%;
+      left: -8%;
+      background: radial-gradient(circle, rgba(107, 92, 231, 0.35) 0%, rgba(107, 92, 231, 0) 70%);
+      animation: loginBlobA 22s ease-in-out infinite alternate;
+    }
+
+    [data-theme="light"] #login-screen::after {
+      width: min(48vw, 380px);
+      height: min(48vw, 380px);
+      bottom: -10%;
+      right: -6%;
+      background: radial-gradient(circle, rgba(64, 140, 220, 0.28) 0%, rgba(64, 140, 220, 0) 72%);
+      animation: loginBlobB 26s ease-in-out infinite alternate;
+    }
+
+    [data-theme="light"] #login-screen .login-card {
+      position: relative;
+      z-index: 1;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 24px 60px rgba(91, 76, 219, 0.08);
+    }
+
+    @keyframes loginBlobA {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(6%, 8%) scale(1.08); }
+    }
+
+    @keyframes loginBlobB {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(-8%, -6%) scale(1.12); }
     }
 
     .login-card {
@@ -131,20 +276,27 @@
     .login-brand {
       display: flex;
       align-items: center;
+      justify-content: space-between;
       gap: 10px;
       margin-bottom: 32px;
+    }
+
+    .login-brand-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
 
     .login-mark {
       width: 38px;
       height: 38px;
-      background: linear-gradient(135deg, #7c6af7 0%, #5d7bef 100%);
+      background: linear-gradient(135deg, var(--accent-gradient-start) 0%, var(--accent-gradient-end) 100%);
       border-radius: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 18px;
-      box-shadow: 0 12px 24px rgba(124, 106, 247, 0.22);
+      box-shadow: 0 12px 24px var(--accent-shadow);
     }
 
     .login-brand-name {
@@ -208,9 +360,9 @@
     .auth-tab {
       flex: 1;
       padding: 12px 0;
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-strong);
       border-radius: 999px;
-      background: rgba(255, 255, 255, 0.03);
+      background: var(--overlay-faint);
       color: var(--text-muted);
       font-weight: 700;
       cursor: pointer;
@@ -218,21 +370,21 @@
     }
 
     .auth-tab:hover {
-      background: rgba(124, 106, 247, 0.14);
+      background: var(--accent-light);
       color: var(--text);
       transform: translateY(-1px);
     }
 
     .auth-tab.active {
-      background: rgba(124, 106, 247, 0.18);
+      background: var(--accent-light);
       color: var(--text);
-      box-shadow: 0 14px 35px rgba(124, 106, 247, 0.12);
-      border-color: rgba(124, 106, 247, 0.45);
+      box-shadow: 0 14px 35px var(--accent-glow);
+      border-color: var(--accent-border);
     }
 
     .login-card button[type="submit"] {
       width: 100%;
-      background: linear-gradient(135deg, #7c6af7 0%, #5d7bef 100%);
+      background: linear-gradient(135deg, var(--accent-gradient-start) 0%, var(--accent-gradient-end) 100%);
       color: #fff;
       border: none;
       border-radius: 14px;
@@ -242,14 +394,14 @@
       padding: 14px;
       cursor: pointer;
       letter-spacing: 0.02em;
-      box-shadow: 0 18px 35px rgba(124, 106, 247, 0.18);
+      box-shadow: 0 18px 35px var(--accent-glow);
       transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
     }
 
     .login-card button[type="submit"]:hover {
       transform: translateY(-1px);
       filter: brightness(1.05);
-      box-shadow: 0 22px 40px rgba(124, 106, 247, 0.22);
+      box-shadow: 0 22px 40px var(--accent-shadow);
     }
 
     .login-card button[type="submit"]:active {
@@ -293,7 +445,7 @@
     }
 
     .password-toggle:hover {
-      background: rgba(255, 255, 255, 0.06);
+      background: var(--overlay-subtle);
       color: var(--text);
     }
 
@@ -324,6 +476,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 8px;
     }
 
     .sidebar-brand {
@@ -477,7 +630,7 @@
 
     .conv-del:hover {
       color: var(--danger);
-      background: rgba(226, 75, 74, 0.1);
+      background: var(--danger-light);
     }
 
     .sidebar-footer {
@@ -544,9 +697,9 @@
     }
 
     #logout-btn:hover {
-      background: rgba(226, 75, 74, 0.1);
+      background: var(--danger-light);
       color: var(--danger);
-      border-color: rgba(226, 75, 74, 0.4);
+      border-color: var(--danger-border);
     }
 
     #chat-panel {
@@ -564,6 +717,7 @@
       align-items: center;
       padding: 0 20px;
       flex-shrink: 0;
+      gap: 8px;
     }
 
     #chat-header-title {
@@ -718,10 +872,34 @@
 
     .msg-row.user-msg .msg-body {
       display: inline-block;
+      margin-left: 30px;
       background: var(--accent-light);
-      border: 1px solid rgba(124, 106, 247, 0.2);
+      border: 1px solid var(--user-msg-border);
       border-radius: 12px 12px 3px 12px;
       padding: 9px 13px;
+    }
+
+    .msg-row.assistant-msg .assistant-content {
+      margin-left: 30px;
+      background: var(--assistant-bg);
+      border: 1px solid var(--assistant-border);
+      border-radius: 12px 12px 12px 3px;
+      padding: 12px 14px;
+      box-shadow: 0 1px 4px var(--assistant-shadow);
+    }
+
+    .msg-row.assistant-msg .msg-body {
+      padding-left: 0;
+    }
+
+    .msg-row.assistant-msg .msg-reasoning {
+      margin-left: 0;
+      margin-top: 10px;
+    }
+
+    .msg-row.assistant-msg .msg-download {
+      margin-left: 30px;
+      margin-top: 8px;
     }
 
     .msg-reasoning {
@@ -765,7 +943,7 @@
       flex-direction: column;
       gap: 2px;
       padding: 4px 0;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid var(--divider-subtle);
     }
 
     .msg-reasoning-item:last-child {
@@ -786,8 +964,8 @@
 
     .msg-documents {
       margin-top: 12px;
-      background: rgba(124, 106, 247, 0.06);
-      border: 1px solid rgba(124, 106, 247, 0.15);
+      background: var(--docs-panel-bg);
+      border: 1px solid var(--docs-panel-border);
       border-radius: 12px;
       padding: 10px;
     }
@@ -846,7 +1024,7 @@
     }
 
     .doc-ref:hover {
-      color: #9d91ff;
+      color: var(--accent-hover);
     }
 
     .citation-badge {
@@ -868,8 +1046,8 @@
     }
 
     .citation-badge:hover {
-      background: rgba(124, 106, 247, 0.22);
-      color: #b5abf9;
+      background: var(--citation-hover-bg);
+      color: var(--citation-hover-text);
       text-decoration: none;
     }
 
@@ -989,13 +1167,13 @@
 
     .scope-back-btn:hover {
       color: var(--danger);
-      background: rgba(226, 75, 74, 0.1);
+      background: var(--danger-light);
     }
 
     .modal-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.55);
+      background: var(--modal-overlay);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1109,7 +1287,7 @@
     }
 
     .modal-btn-primary {
-      background: linear-gradient(135deg, #7c6af7 0%, #5d7bef 100%);
+      background: linear-gradient(135deg, var(--accent-gradient-start) 0%, var(--accent-gradient-end) 100%);
       border: none;
       color: #fff;
       border-radius: 10px;
@@ -1569,7 +1747,7 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      box-shadow: 0 8px 24px var(--shadow-elevated);
       pointer-events: none;
     }
 
@@ -1580,17 +1758,17 @@
     .composer-box {
       max-width: 680px;
       margin: 0 auto;
-      background: rgba(28, 30, 49, 0.92);
-      border: 1px solid rgba(88, 144, 255, 0.35);
+      background: var(--composer-bg);
+      border: 1px solid var(--composer-border);
       border-radius: 18px;
       transition: border-color 0.25s ease, box-shadow 0.25s ease;
       overflow: hidden;
-      box-shadow: 0 12px 35px rgba(41, 77, 139, 0.18);
+      box-shadow: 0 12px 35px var(--composer-shadow);
     }
 
     .composer-box:focus-within {
-      border-color: rgba(94, 159, 255, 0.85);
-      box-shadow: 0 0 0 1px rgba(94, 159, 255, 0.15);
+      border-color: var(--composer-border-focus);
+      box-shadow: 0 0 0 1px var(--composer-input-focus-ring);
     }
 
     .composer-row {
@@ -1628,7 +1806,7 @@
 
     .plus-progress-track {
       fill: none;
-      stroke: rgba(255, 255, 255, 0.12);
+      stroke: var(--progress-track);
       stroke-width: 2.5;
     }
 
@@ -1657,8 +1835,8 @@
       width: 42px;
       height: 42px;
       border-radius: 14px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--composer-input-border);
+      background: var(--overlay-subtle);
       color: var(--text);
       font-size: 20px;
       font-weight: 400;
@@ -1670,7 +1848,7 @@
     }
 
     #plus-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: var(--overlay-strong);
     }
 
     #plus-btn:active {
@@ -1701,7 +1879,7 @@
     border: 1px solid var(--border-strong);
     border-radius: 12px;
     padding: 6px;
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 12px 30px var(--shadow-elevated);
     z-index: 999;
   }
 
@@ -1744,12 +1922,17 @@
       font-size: 13px;
     }
 
+    .plus-menu-check[hidden],
+    .icon-slot[hidden] {
+      display: none !important;
+    }
+
     #attach-btn {
       width: 42px;
       height: 42px;
       border-radius: 14px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--composer-input-border);
+      background: var(--overlay-subtle);
       color: var(--text);
       display: inline-flex;
       align-items: center;
@@ -1759,7 +1942,7 @@
     }
 
     #attach-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: var(--overlay-strong);
     }
 
     #attach-btn:active {
@@ -1768,8 +1951,8 @@
 
     #message-input {
       flex: 1;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: var(--composer-input-bg);
+      border: 1px solid var(--composer-input-border);
       border-radius: 18px;
       outline: none;
       font-family: var(--font);
@@ -1785,8 +1968,8 @@
     }
 
     #message-input:focus {
-      box-shadow: 0 0 0 6px rgba(94, 159, 255, 0.15);
-      background: rgba(255, 255, 255, 0.08);
+      box-shadow: 0 0 0 6px var(--composer-input-focus-ring);
+      background: var(--composer-input-focus-bg);
     }
 
     #message-input::placeholder {
@@ -1821,20 +2004,20 @@
     }
 
     #web-search-btn {
-      background: rgba(255, 255, 255, 0.08);
+      background: var(--overlay-medium);
       color: var(--text);
     }
 
     #web-search-btn:hover {
-      background: rgba(255, 255, 255, 0.16);
+      background: var(--overlay-strong);
     }
 
     #web-search-btn.active,
     #web-search-btn:focus-visible {
       background: var(--accent);
       color: #fff;
-      border: 1px solid rgba(255, 255, 255, 0.28);
-      box-shadow: 0 0 0 3px rgba(124, 106, 247, 0.32);
+      border: 1px solid var(--border-strong);
+      box-shadow: 0 0 0 3px var(--accent-ring);
     }
 
     #message-input,
@@ -1869,6 +2052,118 @@
       color: var(--text-faint);
       cursor: not-allowed;
     }
+
+    .theme-toggle {
+      width: 30px;
+      height: 30px;
+      border-radius: 7px;
+      border: 1px solid var(--border-strong);
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+      padding: 0;
+    }
+
+    .theme-toggle:hover {
+      background: var(--surface-hover);
+      color: var(--text);
+    }
+
+    .theme-toggle svg,
+    .icon-slot svg,
+    .lucide-icon,
+    .new-btn svg,
+    .conv-del svg,
+    .scope-back-btn svg,
+    #logout-btn svg,
+    #trace-header-toggle svg,
+    #trace-collapse-btn svg,
+    #plus-btn svg,
+    #send-btn svg,
+    .plus-menu-icon svg,
+    .plus-menu-check svg,
+    .login-mark svg,
+    .sidebar-mark svg,
+    .empty-icon svg,
+    .trace-sidebar-icon svg,
+    .trace-empty-icon svg,
+    .modal-icon svg,
+    .conv-icon svg,
+    .project-icon svg,
+    .project-chevron svg,
+    .password-toggle svg,
+    .trace-node svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      fill: none;
+      flex-shrink: 0;
+      display: block;
+    }
+
+    .login-mark svg,
+    .sidebar-mark svg {
+      width: 18px;
+      height: 18px;
+      color: #fff;
+      fill: currentColor;
+      stroke: currentColor;
+    }
+
+    .empty-icon svg,
+    .trace-sidebar-icon svg,
+    .trace-empty-icon svg,
+    .modal-icon svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    #plus-btn svg {
+      color: currentColor;
+    }
+
+    #send-btn svg {
+      color: #fff;
+      transition: color 0.15s ease, opacity 0.15s ease;
+    }
+
+    #send-btn:disabled svg {
+      color: var(--text-faint);
+      opacity: 0.65;
+    }
+
+    .new-btn svg {
+      color: currentColor;
+    }
+
+    .plus-menu-icon svg {
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .plus-menu-item:hover .plus-menu-icon svg {
+      color: var(--text);
+    }
+
+    .icon-slot {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .plus-menu-icon,
+    .conv-icon,
+    .project-icon,
+    .project-chevron {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
   </style>
 </head>
 
@@ -1878,8 +2173,11 @@
   <section id="login-screen">
     <div class="login-card">
       <div class="login-brand">
-        <div class="login-mark">🔍</div>
-        <span class="login-brand-name">RAG Chat</span>
+        <div class="login-brand-left">
+          <div class="login-mark icon-slot" data-icon="heart"></div>
+          <span class="login-brand-name">Autia</span>
+        </div>
+        <button type="button" class="theme-toggle" id="login-theme-toggle" title="Toggle theme" aria-label="Toggle light/dark theme"></button>
       </div>
 
       <div class="auth-tabs">
@@ -1904,7 +2202,7 @@
           <label for="password-input">Password</label>
           <div class="password-field">
             <input id="password-input" name="password" type="password" placeholder="Enter your password" required>
-            <button type="button" class="password-toggle" id="password-toggle" aria-label="Show password">👁</button>
+            <button type="button" class="password-toggle" id="password-toggle" aria-label="Show password"></button>
           </div>
         </div>
 
@@ -1921,25 +2219,26 @@
     <aside id="sidebar">
       <div class="sidebar-top">
         <div class="sidebar-brand">
-          <div class="sidebar-mark">🔍</div>
-          <span class="sidebar-brand-name">RAG Chat</span>
+          <div class="sidebar-mark icon-slot" data-icon="heart"></div>
+          <span class="sidebar-brand-name">Autia</span>
         </div>
+        <button type="button" class="theme-toggle" id="sidebar-theme-toggle" title="Toggle theme" aria-label="Toggle light/dark theme"></button>
       </div>
       <div class="sidebar-label-row">
         <span class="sidebar-label">Projects</span>
-        <button class="new-btn" id="new-project-btn" title="New project">+</button>
+        <button class="new-btn icon-slot" id="new-project-btn" title="New project" data-icon="plus"></button>
       </div>
       <div id="project-list"></div>
 
       <div class="sidebar-label-row">
         <span class="sidebar-label" id="conv-scope-label">Conversations</span>
-        <button class="new-btn" id="new-general-conversation-btn" title="New conversation">+</button>
+        <button class="new-btn icon-slot" id="new-general-conversation-btn" title="New conversation" data-icon="plus"></button>
       </div>
       <div id="general-conversation-list"></div>
       <div id="project-conversation-section" hidden>
         <div class="sidebar-label-row">
           <span class="sidebar-label" id="project-chat-label">Project chats</span>
-          <button class="scope-back-btn" id="scope-back-btn" title="Hide project chats">✕</button>
+          <button class="scope-back-btn icon-slot" id="scope-back-btn" title="Hide project chats" data-icon="x"></button>
         </div>
         <div id="project-conversation-list"></div>
       </div>
@@ -1950,7 +2249,7 @@
             <div class="user-name" id="username-display">—</div>
             <div class="user-sub">online</div>
           </div>
-          <button id="logout-btn" title="Log out">↩</button>
+          <button id="logout-btn" class="icon-slot" title="Log out" data-icon="log-out"></button>
         </div>
       </div>
     </aside>
@@ -1958,11 +2257,12 @@
     <main id="chat-panel">
       <header class="chat-header">
         <span id="chat-header-title">New chat</span>
-        <button id="trace-header-toggle" title="Toggle pipeline trace">🧪</button>
+        <button type="button" class="theme-toggle" id="header-theme-toggle" title="Toggle theme" aria-label="Toggle light/dark theme"></button>
+        <button id="trace-header-toggle" class="icon-slot" title="Toggle pipeline trace" data-icon="flask-conical"></button>
       </header>
       <div id="messages">
         <div id="empty-state">
-          <div class="empty-icon">💬</div>
+          <div class="empty-icon icon-slot" data-icon="message-square"></div>
           <div class="empty-title">Hi there!</div>
           <div class="empty-sub">How can I help you today?</div>
         </div>
@@ -1979,12 +2279,12 @@
                   <circle class="plus-progress-value" cx="26" cy="26" r="22"
                     pathLength="100"></circle>
                 </svg>
-                <button id="plus-btn" type="button" title="Add">+</button>
+                <button id="plus-btn" type="button" title="Add" class="icon-slot" data-icon="plus"></button>
               </div>
               <input id="attach-input" type="file" accept=".pdf,.docx,.txt,.mp3,.mp4,.wav" style="display:none" />
 
               <textarea id="message-input" placeholder="Ask something about your documents…" rows="1"></textarea>
-              <button type="submit" id="send-btn" disabled>↑</button>
+              <button type="submit" id="send-btn" class="icon-slot" disabled data-icon="send"></button>
             </div>
           </form>
         </div>
@@ -1994,17 +2294,17 @@
     <aside id="trace-sidebar">
       <div class="trace-sidebar-header">
         <div class="trace-sidebar-title-wrap">
-          <div class="trace-sidebar-icon">🧪</div>
+          <div class="trace-sidebar-icon icon-slot" data-icon="flask-conical"></div>
           <div>
             <div class="trace-sidebar-title">Pipeline Trace</div>
             <div class="trace-sidebar-subtitle" id="trace-sidebar-subtitle"></div>
           </div>
         </div>
-        <button id="trace-collapse-btn" title="Collapse">×</button>
+        <button id="trace-collapse-btn" class="icon-slot" title="Collapse" data-icon="x"></button>
       </div>
       <div class="trace-sidebar-body" id="trace-sidebar-body">
         <div class="trace-empty">
-          <div class="trace-empty-icon">🧪</div>
+          <div class="trace-empty-icon icon-slot" data-icon="flask-conical"></div>
           <div class="trace-empty-title">No trace yet</div>
           <div class="trace-empty-sub">Send a message and the pipeline's steps will show up here.</div>
         </div>
@@ -2015,7 +2315,7 @@
     <div id="project-modal-overlay" class="modal-overlay" hidden>
       <div class="modal-card">
         <div class="modal-head">
-          <div class="modal-icon">📁</div>
+          <div class="modal-icon icon-slot" data-icon="folder"></div>
           <div>
             <div class="modal-title">New project</div>
             <div class="modal-sub">Projects keep chats and files scoped together.</div>
@@ -2036,23 +2336,25 @@
 
     <div id="plus-menu" class="plus-menu" hidden>
       <button type="button" class="plus-menu-item" id="menu-upload-btn">
-        <span class="plus-menu-icon">📎</span>
+        <span class="plus-menu-icon icon-slot" data-icon="paperclip"></span>
         <span class="plus-menu-label">Upload document</span>
       </button>
       <button type="button" class="plus-menu-item" id="menu-websearch-btn">
-        <span class="plus-menu-icon">🌐</span>
+        <span class="plus-menu-icon icon-slot" data-icon="search"></span>
         <span class="plus-menu-label">Web search</span>
-        <span class="plus-menu-check" id="websearch-check" hidden>✓</span>
+        <span class="plus-menu-check icon-slot" id="websearch-check" hidden data-icon="check"></span>
       </button>
       <button type="button" class="plus-menu-item" id="menu-agent-btn">
-        <span class="plus-menu-icon">🤖</span>
+        <span class="plus-menu-icon icon-slot" data-icon="bot"></span>
         <span class="plus-menu-label">Agent mode</span>
-        <span class="plus-menu-check" id="agent-check" hidden>✓</span>
+        <span class="plus-menu-check icon-slot" id="agent-check" hidden data-icon="check"></span>
       </button>
     </div>
 
   </section>
 
+  <script src="{{ url_for('static', filename='vendor/lucide.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/icons.js') }}"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>

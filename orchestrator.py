@@ -2,13 +2,15 @@
 import os
 import re
 from dotenv import load_dotenv
+from config.models import ENV_ORCHESTRATOR_MODEL, get_role_preferred_model
 from llm_client import call_gemini
+from text_utils import strip_thinking_tags
 from web_search_mcp import get_web_search_tool
 
 load_dotenv()
 
 ORCHESTRATOR_MODEL = {
-    "name": os.getenv("ORCHESTRATOR_MODEL", "llama-3.1-8b-instant")
+    "name": get_role_preferred_model(ENV_ORCHESTRATOR_MODEL)
 }
 
 
@@ -46,20 +48,14 @@ def _keyword_route(query: str):
 
 
 
-def strip_thinking(text: str) -> str:
-    if '</think>' in text:
-        text = text.split('</think>', 1)[-1]
-    text = re.sub(r'Thinking Process:.*', '', text, flags=re.DOTALL)
-    return text.strip()
-
-
 def call_llm(url, model_name, messages, temperature=0, max_tokens=10):
-    return strip_thinking(
+    return strip_thinking_tags(
         call_gemini(
             model_name=model_name,
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
+            disable_reasoning=True,
         )
     )
 

@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeou
 from typing import Any
 
 from llm_client import call_gemini
+from text_utils import strip_thinking_tags
 from agent_harness.config import (
     ALLOWED_TOOLS,
     MAX_SUBAGENT_STEPS,
@@ -29,11 +30,7 @@ _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
 def _strip(text: str) -> str:
-    if not text:
-        return ""
-    if "</think>" in text:
-        text = text.split("</think>", 1)[-1]
-    return text.strip()
+    return strip_thinking_tags(text)
 
 
 def _parse_action(raw: str) -> dict[str, Any] | None:
@@ -241,6 +238,7 @@ def _tool_loop_run(subtask: dict, project_id, allowed: set[str]) -> SubAgentMemo
                 messages=messages,
                 temperature=0.1,
                 max_tokens=400,
+                disable_reasoning=True,
             )
             if AGENT_DEBUG_TRANSCRIPTS:
                 log.debug("Sub-agent %s step %s raw: %s", subtask_id, step, raw[:500])

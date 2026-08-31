@@ -9,7 +9,7 @@ server_params = StdioServerParameters(
     args=[
         "-y",
         "@modelcontextprotocol/server-filesystem",
-        "E:/agentic_rag"
+        "E:/autia"
     ]
 )
 
@@ -32,31 +32,19 @@ async def filesystem_call(tool_name, arguments):
 
 import os
 from dotenv import load_dotenv
-from groq import Groq
 
 from docx import Document
 
-# NEW: the formatted PDF builder (cover page, colored headings, auto TOC,
-# tables, page numbers) lives in pdf_generator.py, sitting next to this file.
+from config.models import ENV_RESPONSE_MODEL, get_role_preferred_model
+from llm_client import call_gemini
 from pdf_generator import build_report_pdf
+from text_utils import strip_thinking_tags
 
 load_dotenv()
 
 
-client = Groq(
-    api_key=os.getenv("GROQ_API_KEY")
-)
-
-
 def generate_content(query, content=None):
-
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        temperature=0.3,
-        messages=[
-            {
-                "role": "system",
-                "content": """
+    system_content = """
                 You are a professional document writer.
                 Generate well-structured content suitable for a formal business report.
                 If reference content is provided, use it as the basis for the document.
@@ -72,15 +60,19 @@ def generate_content(query, content=None):
                 - Do not include page numbers, a table of contents, or a
                   cover page yourself — those are generated automatically.
                 """.replace("{content}", content or "")
-            },
-            {
-                "role": "user",
-                "content": query
-            }
-        ]
-    )
 
-    return response.choices[0].message.content
+    return strip_thinking_tags(
+        call_gemini(
+            model_name=get_role_preferred_model(ENV_RESPONSE_MODEL),
+            messages=[
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": query},
+            ],
+            temperature=0.3,
+            max_tokens=2000,
+            disable_reasoning=True,
+        )
+    )
 
 
 def create_pdf(

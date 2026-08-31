@@ -1,7 +1,7 @@
 services:
   app:
     build: .
-    container_name: agentic_rag
+    container_name: autia
     ports:
       - "5000:5000"
     env_file:
@@ -32,7 +32,7 @@ services:
     image: postgres:16-alpine
     container_name: rag_postgres
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-agentic_rag}
+      POSTGRES_DB: ${POSTGRES_DB:-autia}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-4679}
     ports:

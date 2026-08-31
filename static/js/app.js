@@ -50,6 +50,53 @@
   const traceCollapseBtn  = document.getElementById("trace-collapse-btn");
   const traceHeaderToggle = document.getElementById("trace-header-toggle");
 
+  const THEME_STORAGE_KEY = "autia-theme";
+  const { mountIcon, lucideIconHtml, stepIconName, mountFromDataAttr } = window.AutiaIcons;
+
+  function getTheme() {
+    return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+  }
+
+  function applyTheme(theme, persist) {
+    const next = theme === "light" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    if (persist) localStorage.setItem(THEME_STORAGE_KEY, next);
+    updateThemeToggleButtons();
+  }
+
+  function toggleTheme() {
+    applyTheme(getTheme() === "dark" ? "light" : "dark", true);
+  }
+
+  function updateThemeToggleButtons() {
+    const iconName = getTheme() === "dark" ? "Sun" : "Moon";
+    ["login-theme-toggle", "sidebar-theme-toggle", "header-theme-toggle"].forEach((id) => {
+      mountIcon(document.getElementById(id), iconName, { size: 16 });
+    });
+  }
+
+  function initThemeToggles() {
+    updateThemeToggleButtons();
+    ["login-theme-toggle", "sidebar-theme-toggle", "header-theme-toggle"].forEach((id) => {
+      const btn = document.getElementById(id);
+      if (btn) btn.addEventListener("click", toggleTheme);
+    });
+  }
+
+  function initStaticIcons() {
+    mountFromDataAttr(document);
+
+    const passwordToggle = document.getElementById("password-toggle");
+    if (passwordToggle) mountIcon(passwordToggle, "Eye", { size: 16 });
+
+    mountIcon(document.getElementById("new-project-btn"), "Plus", { size: 14 });
+    mountIcon(document.getElementById("new-general-conversation-btn"), "Plus", { size: 14 });
+    mountIcon(document.getElementById("send-btn"), "Send", { size: 18 });
+  }
+
+  initThemeToggles();
+  initStaticIcons();
+
   const plusBtn        = document.getElementById("plus-btn");
   const plusWrap       = document.getElementById("plus-wrap") || (plusBtn && plusBtn.parentElement);
   const plusProgressValue = plusWrap
@@ -78,21 +125,9 @@
   let liveTraceSteps = [];
 
   // ── pipeline trace rendering ─────────────────────────────────
-  const STEP_ICONS = {
-    history: "🕘",
-    rewrite: "✏️",
-    orchestrate: "🧭",
-    retrieval: "📚",
-    web_search: "🌐",
-    generate: "💬",
-    refine: "🔁",
-    fallback: "⚠️",
-    file: "📄",
-    agent_plan: "🤖",
-    subagent_start: "▶",
-    subagent_memory: "🧠",
-    agent_aggregate: "🧩"
-  };
+  function stepIcon(step) {
+    return lucideIconHtml(stepIconName(step), { size: 14 });
+  }
 
   let activeProjectId = null; // null = general chats, else the selected project's id
   async function refreshConversations() {
@@ -116,11 +151,6 @@
       if (step.status === "empty") return "node-warning";
     }
     return "node-accent";
-  }
-
-  function stepIcon(step) {
-    if (step.type === "evaluation") return step.relevant ? "✓" : "✕";
-    return STEP_ICONS[step.type] || "•";
   }
 
   function renderTraceStep(step) {
@@ -328,10 +358,11 @@
   function showTraceEmpty() {
     traceSidebarBody.innerHTML =
       '<div class="trace-empty">' +
-        '<div class="trace-empty-icon">🧪</div>' +
+        '<div class="trace-empty-icon icon-slot" data-icon="flask-conical"></div>' +
         '<div class="trace-empty-title">No trace yet</div>' +
         '<div class="trace-empty-sub">Send a message and the pipeline\u2019s steps will show up here.</div>' +
       '</div>';
+    mountFromDataAttr(traceSidebarBody);
     traceSubtitle.textContent = "";
   }
 
@@ -350,7 +381,10 @@
     if (!trace) { showTraceEmpty(); return; }
 
     traceSubtitle.textContent = truncateText(tracePreviewText(trace), 56);
-    traceSidebarBody.innerHTML = DOMPurify.sanitize(buildTraceHTML(trace));
+    traceSidebarBody.innerHTML = DOMPurify.sanitize(buildTraceHTML(trace), {
+      ADD_TAGS: ["svg", "path", "circle", "line", "polyline", "rect"],
+      ADD_ATTR: ["viewBox", "d", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "width", "height", "aria-hidden", "xmlns"],
+    });
   }
 
   function resetTracePanel() {
@@ -377,7 +411,10 @@
 
     const timeline = document.getElementById("live-trace-timeline");
     if (timeline) {
-      timeline.insertAdjacentHTML("beforeend", DOMPurify.sanitize(renderTraceStep(step)));
+      timeline.insertAdjacentHTML("beforeend", DOMPurify.sanitize(renderTraceStep(step), {
+        ADD_TAGS: ["svg", "path", "circle", "line", "polyline", "rect"],
+        ADD_ATTR: ["viewBox", "d", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "width", "height", "aria-hidden", "xmlns"],
+      }));
       traceSidebarBody.scrollTop = traceSidebarBody.scrollHeight;
     }
 
@@ -602,7 +639,7 @@
   function startAssistantMessageRow() {
     showChat();
     const row = document.createElement("div");
-    row.className = "msg-row";
+    row.className = "msg-row assistant-msg";
 
     const head = document.createElement("div");
     head.className = "msg-head";
@@ -623,15 +660,20 @@
     head.appendChild(rl);
     head.appendChild(tm);
 
+    const contentWrap = document.createElement("div");
+    contentWrap.className = "assistant-content";
+
     const body = document.createElement("div");
     body.className = "msg-body";
     body.innerHTML = renderMessageHtml("Thinking…");
 
     const { reasoningWrap, reasoningBody, docsBody } = createReasoningPanel();
 
+    contentWrap.appendChild(body);
+    contentWrap.appendChild(reasoningWrap);
+
     row.appendChild(head);
-    row.appendChild(body);
-    row.appendChild(reasoningWrap);
+    row.appendChild(contentWrap);
     msgContainer.appendChild(row);
     scrollBottom();
 
@@ -778,7 +820,7 @@
   function appendMsg(role, text, trace) {
     showChat();
     const row  = document.createElement("div");
-    row.className = "msg-row" + (role === "user" ? " user-msg" : "");
+    row.className = "msg-row" + (role === "user" ? " user-msg" : " assistant-msg");
 
     const head = document.createElement("div");
     head.className = "msg-head";
@@ -802,21 +844,30 @@
     const body = document.createElement("div");
     body.className = "msg-body";
     body.innerHTML = renderMessageHtml(text);
+
     row.appendChild(head);
-    row.appendChild(body);
 
-    if (role === "assistant" && trace && trace.steps && trace.steps.length) {
-      const { reasoningWrap, reasoningBody, docsBody } = createReasoningPanel();
-      // Replay every saved step so "Show thinking" + referenced docs match live.
-      trace.steps.forEach(step => appendStreamingReasoningStep(reasoningBody, docsBody, step));
-      reasoningBody.hidden = true;
-      reasoningBody.style.display = "none";
-      reasoningWrap.querySelector(".msg-reasoning-toggle").textContent = "Show thinking";
-      row.appendChild(reasoningWrap);
+    if (role === "assistant") {
+      const contentWrap = document.createElement("div");
+      contentWrap.className = "assistant-content";
+      contentWrap.appendChild(body);
 
-      const msgId = ++traceCounter;
-      row.dataset.msgId = String(msgId);
-      attachTracePill(row, msgId, trace);
+      if (trace && trace.steps && trace.steps.length) {
+        const { reasoningWrap, reasoningBody, docsBody } = createReasoningPanel();
+        trace.steps.forEach(step => appendStreamingReasoningStep(reasoningBody, docsBody, step));
+        reasoningBody.hidden = true;
+        reasoningBody.style.display = "none";
+        reasoningWrap.querySelector(".msg-reasoning-toggle").textContent = "Show thinking";
+        contentWrap.appendChild(reasoningWrap);
+
+        const msgId = ++traceCounter;
+        row.dataset.msgId = String(msgId);
+        attachTracePill(row, msgId, trace);
+      }
+
+      row.appendChild(contentWrap);
+    } else {
+      row.appendChild(body);
     }
 
     msgContainer.appendChild(row);
@@ -878,8 +929,8 @@
       item.dataset.sessionId = conv.session_id;
 
       const icon = document.createElement("span");
-      icon.className = "conv-icon";
-      icon.textContent = "💬";
+      icon.className = "conv-icon icon-slot";
+      mountIcon(icon, "MessageSquare", { size: 14 });
 
       const label = document.createElement("button");
       label.className = "conv-label";
@@ -887,9 +938,9 @@
       label.addEventListener("click", () => switchTo(conv.session_id, conv.title));
 
       const del = document.createElement("button");
-      del.className = "conv-del";
-      del.textContent = "×";
+      del.className = "conv-del icon-slot";
       del.title = "Delete";
+      mountIcon(del, "Trash2", { size: 14 });
       del.addEventListener("click", e => { e.stopPropagation(); deleteConv(conv.session_id); });
 
       item.appendChild(icon);
@@ -924,8 +975,8 @@
       item.dataset.sessionId = conv.session_id;
 
       const icon = document.createElement("span");
-      icon.className = "conv-icon";
-      icon.textContent = "🧷";
+      icon.className = "conv-icon icon-slot";
+      mountIcon(icon, "Pin", { size: 14 });
 
       const label = document.createElement("button");
       label.className = "conv-label";
@@ -936,9 +987,9 @@
       });
 
       const del = document.createElement("button");
-      del.className = "conv-del";
-      del.textContent = "×";
+      del.className = "conv-del icon-slot";
       del.title = "Delete";
+      mountIcon(del, "Trash2", { size: 14 });
       del.addEventListener("click", e => { e.stopPropagation(); deleteConv(conv.session_id); });
 
       item.appendChild(icon);
@@ -971,22 +1022,22 @@
       item.className = "project-item" + (isExpanded ? " active" : "");
 
       const icon = document.createElement("span");
-      icon.className = "project-icon";
-      icon.textContent = "📁";
+      icon.className = "project-icon icon-slot";
+      mountIcon(icon, "Folder", { size: 14 });
 
       const label = document.createElement("span");
       label.className = "project-name";
       label.textContent = name;
 
       const chevron = document.createElement("span");
-      chevron.className = "project-chevron";
-      chevron.textContent = isExpanded ? "▾" : "▸";
+      chevron.className = "project-chevron icon-slot";
+      mountIcon(chevron, isExpanded ? "ChevronDown" : "ChevronRight", { size: 12 });
 
       const del = document.createElement("button");
       del.type = "button";
-      del.className = "conv-del project-del";
-      del.textContent = "×";
+      del.className = "conv-del project-del icon-slot";
       del.title = "Delete project";
+      mountIcon(del, "Trash2", { size: 14 });
       del.addEventListener("click", (e) => {
         e.stopPropagation();
         // Read id from the row dataset at click-time (avoids empty/stale closure values).
@@ -1011,9 +1062,9 @@
 
         const newChatBtn = document.createElement("button");
         newChatBtn.type = "button";
-        newChatBtn.className = "new-btn";
+        newChatBtn.className = "new-btn icon-slot";
         newChatBtn.title = "New project chat";
-        newChatBtn.textContent = "+";
+        mountIcon(newChatBtn, "Plus", { size: 16 });
         newChatBtn.addEventListener("click", async (e) => {
           e.stopPropagation();
           // Expanded project already sets activeProjectId, so this hits
@@ -1291,7 +1342,7 @@
   passwordToggle.addEventListener("click", () => {
     const showing = passwordInput.type === "text";
     passwordInput.type = showing ? "password" : "text";
-    passwordToggle.textContent = showing ? "👁" : "🙈";
+    mountIcon(passwordToggle, showing ? "Eye" : "EyeOff", { size: 16 });
     passwordToggle.setAttribute("aria-label", showing ? "Show password" : "Hide password");
   });
 
@@ -1449,7 +1500,7 @@ menuUploadBtn.addEventListener("click", () => {
 
 menuWebSearchBtn.addEventListener("click", () => {
   webSearchEnabled = !webSearchEnabled;
-  webSearchCheck.hidden = !webSearchEnabled;
+  syncMenuChecks();
   syncPlusBtn();
   closePlusMenu();
 });
@@ -1457,27 +1508,35 @@ menuWebSearchBtn.addEventListener("click", () => {
 if (menuAgentBtn && agentCheck) {
   menuAgentBtn.addEventListener("click", () => {
     agentModeEnabled = !agentModeEnabled;
-    agentCheck.hidden = !agentModeEnabled;
+    syncMenuChecks();
     syncPlusBtn();
     closePlusMenu();
   });
 }
 
+function syncMenuChecks() {
+  if (webSearchCheck) webSearchCheck.hidden = !webSearchEnabled;
+  if (agentCheck) agentCheck.hidden = !agentModeEnabled;
+}
+
 function syncPlusBtn() {
+  plusBtn.classList.remove("websearch-active", "open");
   if (agentModeEnabled) {
-    plusBtn.textContent = "🤖";
+    mountIcon(plusBtn, "Bot", { size: 18 });
     plusBtn.classList.add("websearch-active");
     plusBtn.title = "Agent mode on";
   } else if (webSearchEnabled) {
-    plusBtn.textContent = "🌐";
+    mountIcon(plusBtn, "Globe", { size: 18 });
     plusBtn.classList.add("websearch-active");
     plusBtn.title = "Web search on";
   } else {
-    plusBtn.textContent = "+";
-    plusBtn.classList.remove("websearch-active");
+    mountIcon(plusBtn, "Plus", { size: 18 });
     plusBtn.title = "Add";
   }
 }
+
+syncMenuChecks();
+syncPlusBtn();
 
   // ── send message ──────────────────────────────────────────────
   messageInput.addEventListener("input", () => {
@@ -1643,7 +1702,15 @@ function syncPlusBtn() {
       return;
     }
     uploadProgressEl.hidden = false;
-    uploadProgressEl.textContent = `📎 ${uploadingFile.name} ${uploadingFile.percent}%`;
+    uploadProgressEl.textContent = "";
+    const iconWrap = document.createElement("span");
+    iconWrap.className = "icon-slot";
+    iconWrap.style.display = "inline-flex";
+    iconWrap.style.marginRight = "6px";
+    iconWrap.style.verticalAlign = "middle";
+    mountIcon(iconWrap, "Paperclip", { size: 14 });
+    uploadProgressEl.appendChild(iconWrap);
+    uploadProgressEl.appendChild(document.createTextNode(`${uploadingFile.name} ${uploadingFile.percent}%`));
     setPlusUploadState("uploading");
     setPlusUploadProgress(uploadingFile.percent);
   }

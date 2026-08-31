@@ -220,13 +220,14 @@
 import os
 import re
 from dotenv import load_dotenv
+from config.models import ENV_RESPONSE_MODEL, get_role_preferred_model
 from langchain_core.documents import Document
 from llm_client import call_gemini
 
 load_dotenv()
 
 RESPONSE_MODEL = {
-    "name": os.getenv("RESPONSE_MODEL", "llama-3.3-70b-versatile")
+    "name": get_role_preferred_model(ENV_RESPONSE_MODEL)
 }
 
 

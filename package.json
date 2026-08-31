@@ -1,0 +1,25 @@
+{
+  "name": "agentic_rag---copy",
+  "version": "1.0.0",
+  "description": "A Flask-based **retrieval-augmented generation (RAG)** chat app with an optional **parent / sub-agent harness**, project-scoped document workspaces, clickable citations, live pipeline traces, and SSE streaming.",
+  "main": "index.js",
+  "scripts": {
+    "postinstall": "node -e \"require('fs').mkdirSync('static/vendor',{recursive:true}); require('fs').copyFileSync('node_modules/lucide/dist/umd/lucide.min.js','static/vendor/lucide.min.js')\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/meh5REeen/Agentic_Rag.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/meh5REeen/Agentic_Rag/issues"
+  },
+  "homepage": "https://github.com/meh5REeen/Agentic_Rag#readme",
+  "dependencies": {
+    "lucide": "^1.37.0",
+    "lucide-react": "^1.37.0"
+  }
+}

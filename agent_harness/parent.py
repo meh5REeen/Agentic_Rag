@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Optional
 
 from llm_client import call_gemini
+from text_utils import strip_thinking_tags
 from orchestrator import get_snapshot
 from agent_harness.config import (
     ALLOWED_SUBTASK_TYPES,
@@ -27,11 +28,7 @@ _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
 def _strip(text: str) -> str:
-    if not text:
-        return ""
-    if "</think>" in text:
-        text = text.split("</think>", 1)[-1]
-    return text.strip()
+    return strip_thinking_tags(text)
 
 
 def _extract_json(raw: str) -> dict | None:
@@ -137,6 +134,7 @@ def plan_subtasks(query: str, snapshot: str, allow_web: bool = False) -> list[di
             messages=messages,
             temperature=0.1,
             max_tokens=500,
+            disable_reasoning=True,
         )
         data = _extract_json(raw) or {}
         plan = _normalize_subtasks(data.get("subtasks") or [])
